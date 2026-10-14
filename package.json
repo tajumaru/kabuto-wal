@@ -1,0 +1,49 @@
+{
+  "name": "stock-memory",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.12.3",
+  "scripts": {
+    "dev": "tsx watch apps/api/src/dev.ts",
+    "start": "tsx apps/api/src/main.ts",
+    "job": "tsx apps/api/src/job.ts",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@fastify/cookie": "latest",
+    "@fastify/static": "latest",
+    "@mysten-incubation/memwal": "latest",
+    "@mysten/dapp-kit-react": "^2.1.39",
+    "@mysten/sui": "latest",
+    "@tanstack/react-query": "latest",
+    "dotenv": "latest",
+    "fastify": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-router-dom": "latest",
+    "recharts": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@eslint/js": "latest",
+    "@playwright/test": "latest",
+    "@tailwindcss/vite": "latest",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "concurrently": "latest",
+    "eslint": "latest",
+    "prettier": "^3.9.10",
+    "tailwindcss": "latest",
+    "tsx": "latest",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "latest",
+    "vite": "latest",
+    "vitest": "latest"
+  }
+}

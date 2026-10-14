@@ -1,0 +1,37 @@
+import { strict as assert } from "node:assert";
+import { LocalLlm } from "../packages/integrations/index";
+import { bitcoinAt } from "../packages/integrations/bitcoin";
+import { parseCryptoQuotes, fetchCryptoWatch } from "../packages/integrations/crypto-watch";
+const llm = new LocalLlm();
+const evidence = [{ recordId: "price", text: "株価の事実（取得日足）基準日 2026-10-13 終値 261" }];
+const cause = await llm.answer("ビットコインの値段が落ちたから？株価さがった？", evidence);
+assert.match(cause.answer, /原因かは判断できません/);
+assert.deepEqual(cause.references, ["price"]);
+const memory = await llm.answer("この銘柄について前に何を心配していた？", evidence);
+assert.match(memory.answer, /記録は見つかりません/);
+assert.match((await llm.answer("なぜ下がった？", [])).answer, /判断できません/);
+for (const question of ["この銘柄なんで、下がっているの？", "何で下落？", "どうして上がった？"]) {
+  assert.match((await llm.answer(question,evidence)).answer, /判断できません/);
+}
+console.log("ローカル応答の原因質問・記憶不足・根拠IDの確認: OK");
+const close = Date.parse("2026-10-13T15:30:00+09:00");
+assert.deepEqual(bitcoinAt([[close - 3600000, 100], [close + 1, 200]], "2026-10-13"), [close - 3600000, 100]);
+assert.equal(bitcoinAt([[close - 7200001, 100]], "2026-10-13"), null);
+const comparison = await llm.answer("BTCが下がったから？", [{recordId:"btc-compare-test", text:"BTCと株価の比較：株価 -2％、BTC -1％。"}]);
+assert.match(comparison.answer, /BTCと株価の比較/);
+assert.match(comparison.answer, /判断できません/);
+console.log("BTC比較の未来データ除外・欠損判定・原因非断定: OK");
+const quotes = {bitcoin:{jpy:100,jpy_24h_change:null,last_updated_at:1700000000}, sui:{jpy:50,jpy_24h_change:-2,last_updated_at:1700000000}, solana:{jpy:10,jpy_24h_change:3,last_updated_at:1700000000}};
+assert.equal(parseCryptoQuotes(quotes)[0].change24h, null);
+assert.throws(()=>parseCryptoQuotes({...quotes,bitcoin:{...quotes.bitcoin,jpy:-1}}));
+const originalKey = process.env.COINGECKO_API_KEY;
+process.env.COINGECKO_API_KEY = "test-placeholder";
+let calls = 0;
+let stored: unknown = null;
+const fakeStore = {read:async()=>stored,write:async(_:string,value:unknown)=>{stored=value;}};
+const fakeFetch = async(url:unknown)=>{calls++;return new Response(JSON.stringify(String(url).includes("market_chart")?{prices:[[1700000000000,100],[1700003600000,110]]}:quotes));};
+await fetchCryptoWatch(fakeStore as any, fakeFetch as typeof fetch);
+await fetchCryptoWatch(fakeStore as any, fakeFetch as typeof fetch);
+assert.equal(calls,4);
+if(originalKey===undefined) delete process.env.COINGECKO_API_KEY; else process.env.COINGECKO_API_KEY=originalKey;
+console.log("仮想通貨の欠損率・不正価格拒否・1時間キャッシュ: OK");

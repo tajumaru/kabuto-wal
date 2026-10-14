@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      DATA_DIR: /data/stock-memory
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - stock-memory:/data/stock-memory
+volumes:
+  stock-memory:

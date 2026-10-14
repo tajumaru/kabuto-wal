@@ -1,0 +1,6 @@
+[package]
+name = "prediction_commitment"
+edition = "2024"
+
+[addresses]
+prediction_commitment = "0x0"

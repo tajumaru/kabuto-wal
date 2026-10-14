@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "KABUTO WAL",
+  "short_name": "KABUTO WAL",
+  "description": "相場を知る。判断を覚える。日本株AI研究アプリ。",
+  "lang": "ja",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#168bd1",
+  "background_color": "#f5f8fb",
+  "icons": [
+    {
+      "src": "/brand/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

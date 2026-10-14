@@ -1,0 +1,27 @@
+# 運用・任意のSui記録
+
+APIとCLIは同じDATA_DIRとロックを使います。OS cronで毎営業日の予定時刻に `pnpm job` を起動してください。J-Quantsカレンダーと株価基準日を照合し、未反映時はmissingとしてジョブに記録します。全取得可能期間を再取得する初期実装なので、APIプランの呼出回数・レスポンス量を確認してください。直近だけの差分取得より時間がかかる代わりに、未取得日と調整訂正を補完します。
+
+同一取得系列の調整済み基準価格と期限価格を比較し、seriesIdが不一致なら評価しません。旧AdjCと新AdjCの混在を防ぐため、必要な両日を一度の取得で揃えます。ファイル原本は不変で、評価訂正は別revision。
+
+## Move
+
+```powershell
+sui move test --path move/prediction_commitment
+```
+
+owner、hash長、重複predictionIdのテストを含みます。モジュールはOwnerRegistryを本人が所有し、keyのみ・storeなしのreceiptをfreezeするため移転・変更できません。サーバー申告generatedAtとClock由来anchoredAtを区別します。
+
+配備とcreate_registryは利用者が自分のウォレットでtestnetへ実施します。この作業では配備・送金を行っていません。実package IDと本人registry IDを.envへ設定し、SUI_NETWORK=testnet、ENABLE_SUI_COMMITMENTS=trueにした場合だけ「testnetに任意記録」を使えます。設定画面でウォレットを接続してから押してください。署名時にウォレットがガスを提示します。
+
+SHA-256(UTF-8 JCS正規化予測JSON || 32ランダムバイトsalt)を記録します。saltはローカルcommitments JSONと暗号化バックアップに含め、通常APIから返しません。receipt確認はgRPCでpackage/type/owner/hash/predictionId/txDigestを照合。未知のレスポンス形式はエラーとし成功を表示しません。障害時はtxDigestを確認し、同一予測を無闇に再送しないでください。
+
+期限営業日のJST 00:00以前にアンカーされた場合だけ事前記録と表示する保守的なルールです。未来期限でないdemo/research予測を後からアンカーしても事前証明になりません。内容一致の証明は的中・市場データ品質を保証しません。mainnet記録、自動signer、SUI送金機能はありません。
+
+## バックアップ・復旧
+
+設定画面のexportでAES-256-GCM暗号化ファイルを取得してください。バックアップ時点の原本、評価revision、記憶、設定、索引、ジョブ、同期job/blob、salt、訂正auditを含みます。サーバーにもbackups配下へ暗号化payloadを保存します。環境変数の秘密値と認証nonceは除外します。
+
+復元は同一モードへ行います。原本が既存と異なる場合、パス不正、パスフレーズ不一致、デモ/実モード不一致は拒否します。レコード単位で原子的に書き込みますが全アプリの復元全体は単一トランザクションではありません。復元中に停止した場合は同じバックアップで再実行してください。本番の完全な巻戻しは、アプリ停止中の永続ボリュームスナップショットを使います。
+
+起動時に索引を再構築、中断runningジョブをinterruptedへ変更、欠けた予測stateと記憶sync予定を補完します。MemWalの受付が不明なsubmittingはuncertainへ移し自動再送しません。鍵なしデモではMemWalへ書き込みません。
