@@ -145,7 +145,7 @@ export class Service {
   }
   async saveBars(bars: Bar[]) {
     const grouped = new Map<string, Bar[]>();
-    const ms = await this.store.read("market/master.json", []);
+    const acquisitions = new Map<string, Bar[]>();
     for (const b of bars) {
       const key = `prices/${b.providerCode}/${b.sessionDate.slice(0, 7)}.json`;
       if (!grouped.has(key)) grouped.set(key, await this.store.read(key, []));
@@ -169,37 +169,44 @@ export class Service {
         .digest("hex");
       const old = rows.find((r) => r.sessionDate === b.sessionDate);
       const row = { ...b, revisionId: hash };
-      // Preserve each acquisition as well as content revisions: equal prices
-      // fetched again may belong to a different adjustment series.
-      const observation = createHash("sha256")
-        .update(JSON.stringify([b.availableAt, b.seriesId]))
-        .digest("hex");
-      const revisionPath = `revisions/${b.providerCode}/${b.sessionDate}/${hash}-${observation}.json`;
-      if (!(await this.store.read(revisionPath, null)))
-        await this.store.write(
-          revisionPath,
-          {
-            ...meta(
-              "price_revision",
-              this.mode === "demo" ? "fixture" : "jquants-v2",
-            ),
-            ...row,
-            inputRevisionIds: [hash],
-            observedAt: b.availableAt,
-            displayCode:
-              ms.find((m: any) => m.providerCode === b.providerCode)
-                ?.displayCode || b.providerCode,
-          },
-          true,
-        );
+      const acquisitionKey = b.providerCode;
+      if (!acquisitions.has(acquisitionKey)) acquisitions.set(acquisitionKey, []);
+      acquisitions.get(acquisitionKey)!.push(row);
       if (old) rows[rows.indexOf(old)] = row;
       else rows.push(row);
     }
-    for (const [key, rows] of grouped)
-      await this.store.write(
-        key,
-        rows.sort((a, b) => a.sessionDate.localeCompare(b.sessionDate)),
-      );
+    // Content excludes acquisition metadata, so identical fetches share one body.
+    // Keep these under revisions so existing backups include both record types.
+    for (const rows of acquisitions.values()) {
+      const { providerCode } = rows[0];
+      const entries = rows.map(({ sessionDate, availableAt, seriesId }) => ({ sessionDate, availableAt, seriesId }))
+        .sort((a, b) => a.sessionDate.localeCompare(b.sessionDate));
+      const content = rows
+        .map((bar) => {
+          const row: Partial<Bar> = { ...bar };
+          delete row.availableAt;
+          delete row.seriesId;
+          return row;
+        })
+        .sort((a, b) => a.sessionDate!.localeCompare(b.sessionDate!));
+      const contentId = createHash("sha256").update(JSON.stringify(content)).digest("hex");
+      const contentKey = `revisions/${providerCode}/content/${contentId}.json`;
+      if (!(await this.store.read(contentKey, null)))
+        await this.store.write(contentKey, { kind: "price_content", bars: content }, true);
+      const observationId = createHash("sha256")
+        .update(JSON.stringify([entries, contentId])).digest("hex");
+      const observationKey = `revisions/${providerCode}/observations/${observationId}.json`;
+      if (!(await this.store.read(observationKey, null)))
+        await this.store.write(observationKey, {
+          ...meta("price_observation", this.mode === "demo" ? "fixture" : "jquants-v2"),
+          contentId, entries,
+        }, true);
+    }
+    const months = [...grouped];
+    for (let i = 0; i < months.length; i += 4)
+      await Promise.all(months.slice(i, i + 4).map(([key, rows]) =>
+        this.store.write(key, rows.sort((a, b) => a.sessionDate.localeCompare(b.sessionDate))),
+      ));
   }
   async history(code: string): Promise<Bar[]> {
     return (await this.store.all<Bar[]>(`prices/${code}`))
@@ -351,8 +358,10 @@ export class Service {
   }
   async evaluateDue() {
     let count = 0;
+    const histories = new Map<string, Bar[]>();
     for (const p of await this.predictions()) {
-      const bars = await this.history(p.providerCode);
+      if (!histories.has(p.providerCode)) histories.set(p.providerCode, await this.history(p.providerCode));
+      const bars = histories.get(p.providerCode)!;
       if (p.targetSessionDate > (bars.at(-1)?.sessionDate || "")) continue;
       const result = evaluate(p, bars);
       if (!result) {
@@ -708,7 +717,8 @@ export class Service {
     await this.store.write(`chats/local/${event.recordId}.json`, event, true);
     return event;
   }
-  async job() {
+  async job({ syncMemory = true }: { syncMemory?: boolean } = {}) {
+    const started = performance.now();
     const j = { ...meta("job"), status: "running", steps: [] as any[] };
     await this.store.write(`jobs/${j.recordId}.json`, j);
     try {
@@ -727,32 +737,43 @@ export class Service {
         const from = new Date(Date.now() - 86400000 * 365 * years)
           .toISOString()
           .slice(0, 10);
-        const ms = await provider.master();
-        await this.store.write(
-          "market/master.json",
-          ms.map((m) => ({
-            providerCode: m.Code,
-            displayCode: m.Code,
-            name: m.CoName,
-          })),
-        );
-        await this.store.write(
-          "market/calendar.json",
-          await provider.calendar(
-            from,
-            new Date(Date.now() + 86400000 * 90).toISOString().slice(0, 10),
-          ),
-        );
+        const referenceStarted = performance.now();
+        const cache = await this.store.read("market/reference-cache.json", null);
+        const cachedCalendar = await this.store.read<Calendar>("market/calendar.json", []);
+        const cachedMaster = await this.store.read<any[]>("market/master.json", []);
+        if (cache?.today !== today || cache?.plan !== plan || !cachedMaster.length || !cachedCalendar.length) {
+          const ms = await provider.master();
+          await this.store.write(
+            "market/master.json",
+            ms.map((m) => ({
+              providerCode: m.Code,
+              displayCode: m.Code,
+              name: m.CoName,
+            })),
+          );
+          await this.store.write(
+            "market/calendar.json",
+            await provider.calendar(
+              from,
+              new Date(Date.now() + 86400000 * 90).toISOString().slice(0, 10),
+            ),
+          );
+          await this.store.write("market/reference-cache.json", { today, plan });
+        }
+        j.steps.push({ step: "reference", durationMs: Math.round(performance.now() - referenceStarted) });
         const watch = await this.store.read("settings/watchlist.json");
         const cal = await this.store.read<Calendar>("market/calendar.json");
         const expected = cal
           .filter((d) => d.open && d.date <= end)
           .at(-1)?.date;
         for (const code of watch.codes) {
+          const priceStarted = performance.now();
           const bars = (await provider.daily(code, from, end)).sort((a, b) =>
             a.sessionDate.localeCompare(b.sessionDate),
           );
+          const fetched = performance.now();
           await this.saveBars(bars);
+          const saved = performance.now();
           if (bars.length >= 21) {
             const latest = bars.at(-1)!;
             await this.store.write(
@@ -777,6 +798,8 @@ export class Service {
             dataAsOf: bars.at(-1)?.sessionDate,
             requestedThrough: end,
             today,
+            fetchMs: Math.round(fetched - priceStarted),
+            saveMs: Math.round(saved - fetched),
           });
         }
       }
@@ -795,7 +818,7 @@ export class Service {
               });
             }
           }
-      try {
+      if (syncMemory) try {
         await syncMemories(
           this.store,
           await this.memoryProvider(),
@@ -808,12 +831,14 @@ export class Service {
           error: (e as Error).message,
         });
       }
+      else j.steps.push({ step: "memwal", status: "deferred" });
       await collectNotices(this);
       j.status = "done";
     } catch (e) {
       j.status = "failed";
       j.steps.push({ error: (e as Error).message });
     }
+    Object.assign(j, { durationMs: Math.round(performance.now() - started) });
     await this.store.write(`jobs/${j.recordId}.json`, j);
     return j;
   }

@@ -54,7 +54,7 @@ pnpm start
 | `MEMWAL_NETWORK` / `MEMWAL_PACKAGE_ID` / `MEMWAL_SUI_ENDPOINT` | リレイヤーに対応する実際のネットワーク、MemWal package ID、gRPC URL。アプリがowner/active/delegateを確認してから接続 |
 | `LLM_PROVIDER` | `local` または `openai` |
 | `LLM_API_KEY` / `LLM_MODEL` | 外部LLMキーとJSON Schema対応モデル名。モデル名は固定していません |
-| `SUI_NETWORK` / `SUI_ENDPOINT` | 本人認証対象ネットワーク・gRPC endpoint。ウォレットUIへ公開設定として読み込み。初期値testnet |
+| `SUI_NETWORK` / `SUI_ENDPOINT` | 本人認証対象ネットワーク・gRPC endpoint。ウォレットUIへ公開設定として読み込み。初期値mainnet |
 | `ALLOW_MARKET_DATA_TO_MEMWAL` | 契約で派生情報の送信を確認してから `true`。初期値false |
 | `ALLOW_MARKET_DATA_TO_LLM` | 独立して送信権利を確認してから `true`。質問に価格を貼り付ける可能性もあるため、falseでは外部LLM呼出自体を停止 |
 | `ENABLE_AUTO_FORECAST` | trueなら日次ジョブで1/5/20営業日の数値予測。候補不足を記録 |
@@ -65,7 +65,7 @@ pnpm start
 1. J-Quantsを本人用として契約し、再配布・外部MemWal/LLM送信可否を確認します。生株価はローカルに保存します。無料スクレイピングへの置換はありません。
 2. 実モードのサーバーを起動し、設定画面で本人ウォレットを接続・署名します。domain/network/用途/nonce/期限を含む署名を検証し、HttpOnlyの1時間セッションを発行します。
 3. `pnpm job` で銘柄マスターと取引カレンダーを取得します。ホームで**マスターにある提供コード**を選び監視追加 → 再度 `pnpm job` または手動取得。無条件の0追加はしません。
-4. MemWalの公式アカウント管理手順で本人アカウントとdelegateを準備します。CodexのMCP記憶・`setup-memwal-codex.ps1` は流用しません。MemWalのネットワークは利用リレイヤーに合わせ、独自Moveのtestnetと同一と仮定しません。
+4. MemWalの公式アカウント管理手順でMainnetの本人アカウントとdelegateを準備します。CodexのMCP記憶・`setup-memwal-codex.ps1` は流用しません。MemWalはMainnet Relayerを使用し、公開設定のnetwork/packageと署名付きowner/accountを照合します。独自Moveのtestnet実験とは別です。
 5. 各サービスで少量の取得・ユーザー記憶の同期/recallを確認してください。キーがないため本実装作業では実サービス接続を検証していません。接続状況は「設定済み」と「検証済み」を混同しません。
 
 ## 定期取得と配備

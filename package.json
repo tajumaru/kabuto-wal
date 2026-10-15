@@ -16,7 +16,7 @@
   "dependencies": {
     "@fastify/cookie": "latest",
     "@fastify/static": "latest",
-    "@mysten-incubation/memwal": "latest",
+    "@mysten-incubation/memwal": "0.1.8",
     "@mysten/dapp-kit-react": "^2.1.39",
     "@mysten/sui": "latest",
     "@tanstack/react-query": "latest",

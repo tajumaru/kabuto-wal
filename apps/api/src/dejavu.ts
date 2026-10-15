@@ -13,7 +13,29 @@ import {
 const namespace = (mode: string, code: string) =>
   `kabutowal:dejavu:v1:${mode}:${code}`;
 export async function snapshot(service: Service, code: string, cutoff: string) {
-  const revisions = await service.store.all<Bar>(`revisions/${code}`);
+  const records = await service.store.all<Bar | {
+    kind: string; contentId?: string; availableAt?: string; seriesId?: string; bars?: Bar[];
+    entries?: { sessionDate: string; availableAt: string; seriesId?: string }[];
+  }>(`revisions/${code}`);
+  const bodies = new Map(records.filter((r) => "kind" in r && r.kind === "price_content")
+    .map((r) => {
+      const bars = (r as { bars: Bar[] }).bars;
+      return [createHash("sha256").update(JSON.stringify(bars)).digest("hex"), bars] as const;
+    }));
+  const revisions: Bar[] = [];
+  for (const record of records) {
+    if (!("kind" in record) || record.kind === "price_revision") {
+      revisions.push(record as Bar);
+    } else if (record.kind === "price_observation") {
+      const body = bodies.get(record.contentId!);
+      if (!body) throw Error("価格取得記録の参照先がありません");
+      const entries = new Map(record.entries?.map((entry) => [entry.sessionDate, entry]));
+      for (const bar of body) {
+        const entry = entries.get(bar.sessionDate);
+        revisions.push({ ...bar, availableAt: entry?.availableAt ?? record.availableAt!, seriesId: entry ? entry.seriesId : record.seriesId });
+      }
+    }
+  }
   const rows = revisions.length ? revisions : await service.history(code);
   const chosen = new Map<string, Bar>();
   for (const b of rows) {

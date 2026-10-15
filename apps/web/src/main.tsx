@@ -281,7 +281,7 @@ function Home() {
   const queryClient = useQueryClient();
   const { data: stocks = [] } = useData("/watchlist"),
     { data: predictions = [] } = useData("/predictions");
-  const [code, setCode] = useState("130A0");
+  const [code, setCode] = useState("");
   return (
     <>
       <HomeBrand />
@@ -875,7 +875,7 @@ function Memories() {
   const [query, setQuery] = useState(""),
     [text, setText] = useState("");
   return (
-    <>
+    <div className="memory-library">
       <Title
         eyebrow="MEMORY LIBRARY"
         title="考えたことを、忘れない。"
@@ -908,7 +908,7 @@ function Memories() {
               </span>
             </div>
             <MemoryContent memory={m} stocks={stocks} />
-            <div className="toolbar">
+            <div className="toolbar memory-actions">
               <Action
                 onClick={() =>
                   api("/memories/" + m.recordId, { active: !m.active }, "PATCH")
@@ -929,14 +929,14 @@ function Memories() {
               >
                 訂正する
               </Action>
-              <button disabled={!m.sync?.blobId || m.sync?.status === "deleted"} onClick={() => setDeleting(m)}>
-                {m.sync?.status === "deleted" ? "MemWalから削除済み" : m.sync?.remoteDeletion && !["failed", "rolled_back"].includes(m.sync.remoteDeletion.state) ? "削除結果を確認" : "MemWalから削除"}
+              <button className={m.sync?.status === "deleted" ? "memory-review" : "memory-delete"} disabled={!m.sync?.blobId} onClick={() => setDeleting({ ...m })}>
+                {m.sync?.status === "deleted" ? "blob削除済み・検索索引を確認" : m.sync?.directWalrusDeletion?.state === "executing" || m.sync?.remoteDeletion && !["failed", "rolled_back"].includes(m.sync.remoteDeletion.state) ? "削除結果を確認" : "MemWalから削除"}
               </button>
               {!m.sync?.blobId && <small>MemWal保存完了後に削除できます。</small>}
             </div>
           </article>
         ))}
-    </>
+    </div>
   );
 }
 function Settings() {
@@ -952,7 +952,7 @@ function Settings() {
   const [password, setPassword] = useState(""),
     [payload, setPayload] = useState("");
   return (
-    <>
+    <div className="settings-page">
       <Title
         eyebrow="WORKSPACE SETTINGS"
         title="研究環境を整える。"
@@ -984,12 +984,22 @@ function Settings() {
           </dl>
         )}
       </div>
-      <div className="card" id="owner-wallet">
-        <h2>KABUTO WAL · 本人確認</h2>
+      <div className="card wallet-card" id="owner-wallet">
+        <div className="wallet-heading">
+          <div className="wallet-symbol" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 9h18M16 13h5M7 5V3h10"/><circle cx="16" cy="14.5" r=".75" fill="currentColor" stroke="none"/></svg></div>
+          <div><span className="wallet-eyebrow">WALLET & ACCESS</span><h2>ウォレットと本人確認</h2></div>
+        </div>
         {isPending ? <p role="status">本人確認の状態を確認中…</p> : authenticated ? <>
-          <p role="status"><span className="badge">本人確認済み</span></p>
-          <p>本人ウォレットでの認証が完了しています。</p>
-          <p className="muted">MemWalの連携設定は「接続状態」で確認できます。認証の有効期限が切れると、再度本人確認が必要です。</p>
+          <div className="wallet-connected">
+            <div><p className="wallet-status" role="status"><span className="wallet-status-dot" aria-hidden="true"/>本人確認済み</p><p className="wallet-description">本人ウォレットでの認証が完了しています。</p></div>
+            <div className="wallet-disconnect">
+          <Action onClick={async () => {
+            const { disconnectWallet } = await import("./wallet");
+            await disconnectWallet();
+          }}>ウォレット接続解除</Action>
+            </div>
+          </div>
+          <div className="wallet-footer"><span>認証の有効期間 · 1時間</span><p>MemWalの連携設定は「接続状態」で確認できます。認証の有効期限が切れると、再度本人確認が必要です。</p></div>
         </> : <>
         <Suspense
           fallback={
@@ -1048,7 +1058,7 @@ function Settings() {
       </div>
       <MemoryReset authenticated={authenticated} />
       <DailyFetch jobs={data?.jobs} />
-    </>
+    </div>
   );
 }
 const client = new QueryClient({

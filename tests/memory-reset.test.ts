@@ -56,7 +56,7 @@ it("所有者不一致・残存件数を検出し、成功扱いしない", asyn
 async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), "memory-reset-"));
   const service = new Service(root, "live");
-  const remote = { identity: vi.fn(async () => {}), namespaces: vi.fn(async () => [{ name: "kabutowal:v1:profile", memory_count: 2 }, { name: "other-app", memory_count: 3 }]), forget: vi.fn(async (_ns: string) => 2) };
+  const remote = { identity: vi.fn(async () => {}), namespaces: vi.fn(async () => [{ name: "kabutowal:v1:profile", memory_count: 2 }, { name: "other-app", memory_count: 3 }]), forget: vi.fn(async (ns: string) => { void ns; return 2; }) };
   const app = Fastify();
   app.setErrorHandler((err, _req, reply) => reply.code(400).send({ error: (err as Error).message }));
   registerMemoryReset(app, service, () => remote);
@@ -64,7 +64,7 @@ async function fixture() {
   await service.store.write("memories/existing.json", { recordId: "existing", namespace: "kabutowal:v1:profile", active: true, kind: "user_memory", text: "keep local" });
   await service.store.write("sync/existing.json", { status: "pending" });
   const preview = () => app.inject({ method: "POST", url: "/api/memory-reset/preview", payload: {} });
-  const execute = (planId: string, confirmation = "検索リセット") => app.inject({ method: "POST", url: "/api/memory-reset/execute", payload: { planId, confirmation } });
+  const execute = (planId: string, confirmation = "検索リセット") => app.inject({ method: "POST", url: "/api/memory-reset/execute", payload: { planId, confirmation, namespaces: ["kabutowal:v1:profile", "other-app"] } });
   return { app, service, remote, preview, execute };
 }
 
@@ -79,10 +79,21 @@ it("確認済みの全区分だけリセットし、既存記録の再送を止�
   expect((await f.service.store.read("sync/existing.json")).searchResetAt).toBeTruthy();
   expect((await f.execute(plan.id)).statusCode).toBe(400);
   await f.service.store.write("memories/new.json", { recordId: "new", namespace: "kabutowal:v1:profile", active: true, kind: "user_memory", text: "new memory" });
-  const provider = { remember: vi.fn(async (_text: string, _namespace: string) => ({ job_id: "job" })), waitForRememberJob: vi.fn(async () => ({ blob_id: "new-blob" })), recall: vi.fn() };
+  const provider = { remember: vi.fn(async (text: string, namespace: string) => { void text; void namespace; return { job_id: "job" }; }), waitForRememberJob: vi.fn(async () => ({ blob_id: "new-blob" })), recall: vi.fn() };
   await syncMemories(f.service.store, provider, true);
   expect(provider.remember).toHaveBeenCalledTimes(1);
   expect(provider.remember.mock.calls[0][0]).toContain("new memory");
+});
+
+it("選択した区分だけを削除し、未確認・重複・空の区分指定は拒否する", async () => {
+  const f = await fixture(), plan = (await f.preview()).json();
+  const execute = (namespaces: string[]) => f.app.inject({ method: "POST", url: "/api/memory-reset/execute", payload: { planId: plan.id, confirmation: "検索リセット", namespaces } });
+  for (const names of [[], ["unknown"], ["other-app", "other-app"]]) expect((await execute(names)).statusCode).toBe(400);
+  expect((await f.app.inject({ method: "POST", url: "/api/memory-reset/execute", payload: { planId: plan.id, confirmation: "検索リセット" } })).statusCode).toBe(400);
+  expect(f.remote.forget).not.toHaveBeenCalled();
+  expect((await execute(["other-app"])).json().state).toBe("completed");
+  expect(f.remote.forget).toHaveBeenCalledExactlyOnceWith("other-app");
+  expect((await f.service.store.read("sync/existing.json")).searchResetAt).toBeUndefined();
 });
 
 it("途中失敗は部分完了として保存し、成功した区分を再送しない", async () => {
@@ -94,6 +105,37 @@ it("途中失敗は部分完了として保存し、成功した区分を再送�
   expect((await f.service.store.read("settings/memwal-search-reset.json")).state).toBe("partial");
   expect((await f.execute(plan.id)).statusCode).toBe(400);
   expect(f.remote.forget).toHaveBeenCalledTimes(2);
+});
+
+it("記憶から開いた確認では実際の保存区分だけを返し、他区分への改変を拒否する", async () => {
+  const f = await fixture();
+  await f.service.store.write("sync/existing.json", { status: "synced", namespace: "other-app" });
+  const plan = (await f.app.inject({ method: "POST", url: "/api/memory-reset/preview", payload: { memoryId: "existing" } })).json();
+  expect(plan.namespaces.map((ns: any) => ns.name)).toEqual(["other-app"]);
+  const execute = (namespaces: string[]) => f.app.inject({ method: "POST", url: "/api/memory-reset/execute", payload: { planId: plan.id, confirmation: "検索リセット", namespaces } });
+  expect((await execute(["kabutowal:v1:profile"])).statusCode).toBe(400);
+  expect(f.remote.forget).not.toHaveBeenCalled();
+  f.remote.namespaces.mockResolvedValue([{ name: "kabutowal:v1:profile", memory_count: 100 }, { name: "other-app", memory_count: 3 }]);
+  expect((await execute(["other-app"])).json().state).toBe("completed");
+  expect(f.remote.forget).toHaveBeenCalledExactlyOnceWith("other-app");
+});
+
+it("対象区分がなければ空を返し、無関係な区分に切り替えない", async () => {
+  const f = await fixture();
+  f.remote.namespaces.mockResolvedValue([{ name: "default", memory_count: 2 }, { name: "work-log", memory_count: 2 }]);
+  const plan = (await f.app.inject({ method: "POST", url: "/api/memory-reset/preview", payload: { memoryId: "existing" } })).json();
+  expect(plan.namespaces).toEqual([]);
+  expect((await f.app.inject({ method: "POST", url: "/api/memory-reset/execute", payload: { planId: plan.id, confirmation: "検索リセット", namespaces: ["default"] } })).statusCode).toBe(400);
+  expect(f.remote.forget).not.toHaveBeenCalled();
+});
+
+it("確認後に記憶の保存区分が変わった場合と不正な記録IDを拒否する", async () => {
+  const f = await fixture();
+  expect((await f.app.inject({ method: "POST", url: "/api/memory-reset/preview", payload: { memoryId: "../settings" } })).statusCode).toBe(400);
+  const plan = (await f.app.inject({ method: "POST", url: "/api/memory-reset/preview", payload: { memoryId: "existing" } })).json();
+  await f.service.store.write("sync/existing.json", { namespace: "other-app" });
+  expect((await f.execute(plan.id)).statusCode).toBe(400);
+  expect(f.remote.forget).not.toHaveBeenCalled();
 });
 
 it("確認後に対象が変わった場合、未確認の区分をリセットしない", async () => {

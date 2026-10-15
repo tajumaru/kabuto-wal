@@ -4,6 +4,7 @@ import { syncMemories } from "../../../packages/integrations/index";
 import Fastify from "fastify";
 import { DeleteApiError, registerMemoryDelete } from "./memory-delete";
 import { registerMemoryReset } from "./memory-reset";
+import { registerBlobDelete } from "./blob-delete";
 import { fetchCryptoWatch } from "../../../packages/integrations/crypto-watch";
 import cookie from "@fastify/cookie";
 import staticFiles from "@fastify/static";
@@ -84,6 +85,7 @@ export async function createApp(service = new Service()) {
   });
   registerMemoryDelete(app, service);
   registerMemoryReset(app, service);
+  registerBlobDelete(app, service);
   registerDejavuJournal(app, service);
   app.get("/api/auth/challenge", async () =>
     service.store.lock(async () => {
@@ -93,7 +95,7 @@ export async function createApp(service = new Service()) {
         ...meta("nonce"),
         nonce,
         domain: process.env.APP_ORIGIN || "http://localhost:5173",
-        network: process.env.SUI_NETWORK || "testnet",
+        network: process.env.SUI_NETWORK || "mainnet",
         purpose: "KABUTO WAL owner login",
         expires: Date.now() + 5 * 60 * 1000,
         used: false,
@@ -345,8 +347,8 @@ export async function createApp(service = new Service()) {
     }),
   );
   app.get("/api/wallet-config", async () => ({
-    network: process.env.SUI_NETWORK || "testnet",
-    endpoint: process.env.SUI_ENDPOINT || "https://fullnode.testnet.sui.io:443",
+    network: process.env.SUI_NETWORK || "mainnet",
+    endpoint: process.env.SUI_ENDPOINT || "https://fullnode.mainnet.sui.io:443",
     commitments: process.env.ENABLE_SUI_COMMITMENTS === "true",
   }));
   app.get("/api/evaluations/summary", async () =>
@@ -457,7 +459,7 @@ export async function createApp(service = new Service()) {
     }),
   );
   app.post("/api/jobs/fetch", async () =>
-    service.store.lock(() => service.job()),
+    service.store.lock(() => service.job({ syncMemory: false })),
   );
   app.patch("/api/settings", async (req) =>
     service.store.lock(async () => {

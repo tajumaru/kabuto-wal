@@ -3,6 +3,7 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
 import { normalizeSuiAddress } from "@mysten/sui/utils";
 import { z } from "zod";
+import { memwalEnvironment } from "./memwal-config";
 
 export type ResetNamespace = { name: string; memory_count: number };
 export interface MemoryResetClient {
@@ -71,5 +72,5 @@ export class MemwalResetClient implements MemoryResetClient {
 export function memoryResetClient(): MemoryResetClient {
   const { MEMWAL_DELEGATE_KEY: key, MEMWAL_ACCOUNT_ID: accountId, OWNER_ADDRESS: owner } = process.env;
   if (!key || !accountId || !owner) throw Error("MemWalのowner・account・delegate設定が必要です。");
-  return new MemwalResetClient({ key, accountId, owner, serverUrl: process.env.MEMWAL_SERVER_URL || "https://relayer.memory.walrus.xyz" });
+  return new MemwalResetClient({ key, accountId, owner, serverUrl: memwalEnvironment().serverUrl });
 }

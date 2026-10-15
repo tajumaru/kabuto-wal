@@ -1,4 +1,5 @@
 import { MemWal } from "@mysten-incubation/memwal";
+import { memwalEnvironment, memwalBinding } from "./memwal-config";
 import { randomUUID } from "node:crypto";
 import { isCauseQuestion } from "../core/question";
 import { barSchema, type Bar } from "../core/index";
@@ -7,13 +8,14 @@ export interface MarketDataProvider {
   daily(code: string, from: string, to: string): Promise<Bar[]>;
 }
 export interface MemoryProvider {
+  environmentBinding?: string;
   remember(text: string, namespace: string): Promise<{ job_id: string }>;
-  waitForRememberJob(id: string): Promise<{ blob_id: string }>;
+  waitForRememberJob(id: string): Promise<{ blob_id: string; namespace?: string }>;
   recall(params: {
     query: string;
     namespace: string;
     limit: number;
-  }): Promise<{ results: { text: string; distance: number }[] }>;
+  }): Promise<{ results: { text: string; distance: number; blob_id?: string }[] }>;
 }
 export interface LlmProvider {
   answer(
@@ -117,12 +119,13 @@ export class JQuants implements MarketDataProvider {
 export function memwal(): MemoryProvider | null {
   if (!process.env.MEMWAL_ACCOUNT_ID || !process.env.MEMWAL_DELEGATE_KEY)
     return null;
-  return MemWal.create({
+  const environment = memwalEnvironment();
+  return Object.assign(MemWal.create({
     key: process.env.MEMWAL_DELEGATE_KEY,
     accountId: process.env.MEMWAL_ACCOUNT_ID,
-    serverUrl: process.env.MEMWAL_SERVER_URL,
+    serverUrl: environment.serverUrl,
     namespace: "kabutowal:v1:profile",
-  });
+  }), { environmentBinding: memwalBinding() });
 }
 export async function syncMemories(
   store: Store,
@@ -135,6 +138,8 @@ export async function syncMemories(
       continue;
     const key = `sync/${memory.recordId}.json`;
     const state = await store.read(key, { status: "pending" });
+    if (state.environmentBinding && state.environmentBinding !== provider.environmentBinding)
+      throw Error("MemWal保存先が変更されています。既存jobの取得・再送は停止しました。");
     if (state.status === "synced" || state.status === "uncertain" || state.status === "deleted" || state.remoteDeletion || state.searchResetAt || memory.remoteDeletedAt) continue;
     if (state.status === "submitting" && !state.jobId) {
       await store.write(key, {
@@ -147,14 +152,14 @@ export async function syncMemories(
     try {
       let jobId = state.jobId;
       if (!jobId) {
-        await store.write(key, { ...state, status: "submitting" });
+        await store.write(key, { ...state, status: "submitting", environmentBinding: provider.environmentBinding });
         const namespace = memory.namespace.replace(/^stock-memory:/, "kabutowal:");
         const accepted = await provider.remember(
           JSON.stringify({ ...memory, namespace }),
           namespace,
         );
         jobId = accepted.job_id;
-        await store.write(key, { status: "accepted", jobId });
+        await store.write(key, { status: "accepted", jobId, environmentBinding: provider.environmentBinding });
       }
       const result = await provider.waitForRememberJob(jobId);
       if (!result.blob_id) throw Error("MemWal保存完了のblob IDが未確認");
@@ -162,6 +167,8 @@ export async function syncMemories(
         status: "synced",
         jobId,
         blobId: result.blob_id,
+        namespace: result.namespace || memory.namespace.replace(/^stock-memory:/, "kabutowal:"),
+        environmentBinding: provider.environmentBinding,
       });
     } catch {
       await store.write(key, {

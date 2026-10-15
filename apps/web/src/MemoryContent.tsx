@@ -26,6 +26,7 @@ export function MemoryDeletePreview({ memory, stocks }: { memory: any; stocks: a
   const period = Array.isArray(payload?.range) ? payload.range.filter((v: unknown) => typeof v === "string").join(" ～ ") : typeof payload?.range === "string" ? payload.range : null;
   const note = payload ? [payload.summary, payload.answer, payload.text].find((value) => typeof value === "string" && !["{", "["].includes(value.trimStart()[0])) : memory.text;
   return <div className="memory-delete-preview">
+    <p className="delete-preview-label">操作対象の記憶（確認用）</p>
     <span className="badge">{memoryKindLabel(memory.kind)}</span>
     <h4>{stockLabel}</h4>
     <p className="muted">保存日時：{savedAt}（日本時間）</p>
@@ -71,7 +72,7 @@ export function MemoryContent({ memory, stocks }: { memory: any; stocks: any[] }
       <p className="muted">「その後」は過去の実績です。類似度は上昇確率ではありません。未取得の実績は「—」で表示します。</p>
     </> : <p className="memory-note">{memory.text}</p>}
     <p className="muted">保存日時：{savedTime}（日本時間）</p>
-    <p className="memory-storage-note">{memory.sync?.status === "deleted" ? "MemWalから削除済みです。このアプリ内の記録は残っています。自動で再同期しません。" : memory.sync?.status === "synced" && memory.sync?.blobId
+    <p className="memory-storage-note">{memory.sync?.status === "deleted" ? "Walrusのblob削除済みです。検索索引の削除状態は別に確認してください。アプリ内の記録は残り、自動で再同期しません。" : memory.sync?.status === "synced" && memory.sync?.blobId
       ? "保存先：このアプリ ＋ MemWal（保存完了のblob IDを確認済み）"
       : memory.sync?.status === "accepted"
         ? "このアプリには保存済みです。MemWalは受付済みですが、保存完了はまだ確認できていません。"
@@ -83,6 +84,7 @@ export function MemoryContent({ memory, stocks }: { memory: any; stocks: any[] }
       {memory.sync?.jobId && <p style={{overflowWrap:"anywhere"}}>MemWal受付ジョブID：{memory.sync.jobId}</p>}
       {memory.sync?.remoteDeletion && <p style={{overflowWrap:"anywhere"}}>MemWal削除状態：{memory.sync.remoteDeletion.state} · バッチID：{memory.sync.remoteDeletion.batchId}</p>}
       {memory.sync?.remoteDeletion?.digest && <p style={{overflowWrap:"anywhere"}}>削除トランザクション：{memory.sync.remoteDeletion.digest}</p>}
+      {memory.sync?.directWalrusDeletion?.digest && <p style={{overflowWrap:"anywhere"}}>Walrus削除取引：{memory.sync.directWalrusDeletion.digest}</p>}
       {analysis && <pre>{JSON.stringify(payload, null, 2)}</pre>}
     </details>
   </div>;

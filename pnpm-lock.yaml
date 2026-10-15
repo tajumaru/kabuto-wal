@@ -15,7 +15,7 @@ importers:
         specifier: latest
         version: 10.1.6
       '@mysten-incubation/memwal':
-        specifier: latest
+        specifier: 0.1.8
         version: 0.1.8(@mysten/seal@1.4.19(@mysten/sui@2.35.0(typescript@5.9.3)))(@mysten/sui@2.35.0(typescript@5.9.3))(zod@4.6.5)
       '@mysten/dapp-kit-react':
         specifier: ^2.1.39

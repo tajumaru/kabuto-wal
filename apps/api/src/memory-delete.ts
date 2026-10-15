@@ -1,6 +1,17 @@
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import type { Service } from "./service";
+import { memwalBinding, memwalEnvironment } from "../../../packages/integrations/memwal-config";
+import type { MemoryProvider } from "../../../packages/integrations/index";
+
+export async function verifyDeletedMemory(provider: MemoryProvider | null, memory: { text: string; namespace: string }, blobId: string) {
+  if (!provider) throw Error("MemWal再検索の接続設定がありません。");
+  const namespace = memory.namespace;
+  const result = await provider.recall({ query: memory.text, namespace, limit: 50 });
+  if (!Array.isArray(result.results) || result.results.some((hit) => !hit.blob_id || hit.blob_id === blobId))
+    throw Error("削除対象が検索に残っているか、blob IDを照合できません。");
+  return { state: "absent" as const, namespace, checkedAt: new Date().toISOString(), limit: 50 };
+}
 
 const exclusionMessages: Record<string, string> = {
   not_owner: "この記憶の保存オブジェクトを現在のウォレットが所有していないため削除できません。",
@@ -19,10 +30,11 @@ export class DeleteApiError extends Error {
 }
 
 // No owner keys or bearer tokens are written to disk. Only the batch receipt is durable.
-export function registerMemoryDelete(app: FastifyInstance, service: Service, fetcher: typeof fetch = fetch) {
+export function registerMemoryDelete(app: FastifyInstance, service: Service, fetcher: typeof fetch = fetch,
+  verifySearch = async (memory: { text: string; namespace: string }, blobId: string) => verifyDeletedMemory(await service.memoryProvider(), memory, blobId)) {
   const tokenSchema = z.string().min(1).max(16000);
   async function remote(path: string, token?: string, body?: unknown, method?: string) {
-    const base = process.env.MEMWAL_SERVER_URL || "https://relayer.memory.walrus.xyz";
+    const base = memwalEnvironment().serverUrl;
     let response: Response;
     try {
       response = await fetcher(new URL(path, base), {
@@ -74,12 +86,13 @@ export function registerMemoryDelete(app: FastifyInstance, service: Service, fet
   }
   function unavailable(state: string | null): never {
     if (state && exclusionMessages[state]) throw new DeleteApiError(`BLOB_${state.toUpperCase()}`, exclusionMessages[state]);
-    throw new DeleteApiError("BLOB_NOT_TRACKED", "この記憶のblob IDが、このサーバー・所有者の削除対象一覧に見つかりません。保存先サーバーや保存時の所有者が異なる場合、またはこのAPIが対応しない保存形式の場合があります。削除は実行していません。");
+    throw new DeleteApiError("BLOB_NOT_TRACKED", "この記憶のblob IDが、このサーバー・所有者の旧V1削除対象一覧に見つかりません。保存先サーバーや保存時の所有者が異なる場合もあります。Security Delete APIは旧V1追跡済みblob専用です。現在の保存APIの記憶は対象外の場合があります。名前空間全体の検索リセットへの自動切替は行わず、削除は実行していません。");
   }
   app.get("/api/memory-delete/config", async () => ({
     enabled: service.mode !== "demo" && !!process.env.OWNER_ADDRESS && ["mainnet", "testnet"].includes(process.env.MEMWAL_NETWORK || ""),
     owner: process.env.OWNER_ADDRESS,
-    network: process.env.MEMWAL_NETWORK || null,
+    network: memwalEnvironment().network,
+    endpoint: memwalEnvironment().endpoint,
   }));
   app.post("/api/memories/:id/remote-delete/:action", async (req) => service.store.lock(async () => {
     if (service.mode === "demo") throw Error("デモではMemWalの削除を実行できません。");
@@ -88,7 +101,15 @@ export function registerMemoryDelete(app: FastifyInstance, service: Service, fet
     const memoryKey = `memories/${id}.json`, syncKey = `sync/${id}.json`;
     const memory = await service.store.read(memoryKey);
     const sync = await service.store.read(syncKey, {});
+    const environmentBinding = memwalBinding();
+    if ((sync.environmentBinding && sync.environmentBinding !== environmentBinding) ||
+        (sync.remoteDeletion?.environmentBinding && sync.remoteDeletion.environmentBinding !== environmentBinding))
+      throw new DeleteApiError("ENVIRONMENT_MISMATCH", "保存時・削除準備時と現在のMemWal接続先が一致しません。設定を確認してください。");
     if (!sync.blobId) throw Error("MemWal保存完了のblob IDがないため削除できません。");
+    const blobDeleted = sync.status === "deleted" || !!memory.remoteDeletedAt || sync.directWalrusDeletion?.state === "completed" || sync.remoteDeletion?.state === "completed";
+    const existingBatchCheck = !!sync.remoteDeletion?.batchId && ["challenge", "verify", "status", "cancel"].includes(action);
+    if (blobDeleted && !existingBatchCheck) throw new DeleteApiError("BLOB_ALREADY_DELETED", "Walrusのblobは削除済みです。新しい削除は実行できません。検索索引は別の操作で確認してください。");
+    if (["awaiting_signature", "executing"].includes(sync.directWalrusDeletion?.state) && !existingBatchCheck) throw new DeleteApiError("BLOB_DELETE_PENDING", "直接blob削除の処理があります。先にその削除結果を確認してください。");
     if (action === "challenge") return z.object({ challengeId: z.string(), challenge: z.string() }).parse(await remote("/api/security-delete-auth/challenge", undefined, { address: process.env.OWNER_ADDRESS }));
     if (action === "verify") {
       const body = z.object({ challengeId: z.string().max(200), signature: z.string().max(16000) }).parse(req.body);
@@ -110,7 +131,7 @@ export function registerMemoryDelete(app: FastifyInstance, service: Service, fet
         // tracked states; never substitute another blob or enroll an untracked one.
         unavailable(await trackedState(sync.blobId, token));
       }
-      await service.store.write(syncKey, { ...sync, remoteDeletion: { batchId: prepared.batchId, state: "awaiting_signature", expiresAt: prepared.expiresAt } });
+      await service.store.write(syncKey, { ...sync, remoteDeletion: { batchId: prepared.batchId, state: "awaiting_signature", expiresAt: prepared.expiresAt, environmentBinding } });
       return { ...prepared, blobId: sync.blobId };
     }
     if (!previous?.batchId) throw Error("確認する削除処理がありません。");
@@ -120,7 +141,7 @@ export function registerMemoryDelete(app: FastifyInstance, service: Service, fet
       // Persist uncertainty BEFORE submitting. A timeout must never cause a fresh deletion.
       await service.store.write(syncKey, { ...sync, remoteDeletion: { ...previous, state: "executing" } });
       try { await remote(`${batchPath}/submit`, token, { signature }); }
-      catch { return { state: "executing", note: "送信結果未確認です。「削除結果を確認」で確認してください。" }; }
+      catch (error) { return { state: "executing", ...(error instanceof DeleteApiError ? { code: error.code } : {}), note: `${error instanceof DeleteApiError ? error.message + " " : ""}送信結果未確認です。「削除結果を確認」で確認してください。` }; }
     }
     const status = z.object({ state: z.enum(["awaiting_signature", "executing", "completed", "failed", "rolled_back"]), digest: z.string().nullable(), blobCount: z.number() }).parse(await remote(batchPath, token, undefined, action === "cancel" ? "DELETE" : "GET"));
     if (status.state === "completed" && (status.blobCount !== 1 || !status.digest)) throw Error("削除完了の取引情報が未確認です。");
@@ -128,6 +149,11 @@ export function registerMemoryDelete(app: FastifyInstance, service: Service, fet
     if (status.state === "completed") {
       await service.store.write(memoryKey, { ...memory, active: false, remoteDeletedAt: new Date().toISOString() });
       await service.store.rebuild();
+      let searchVerification;
+      try { searchVerification = await verifySearch({ ...memory, namespace: sync.namespace || memory.namespace }, sync.blobId); }
+      catch { searchVerification = { state: "pending" as const, note: "削除取引は完了しましたが、MemWal再検索での消失は未確認です。削除結果を再確認してください。" }; }
+      await service.store.write(syncKey, { ...sync, status: "deleted", remoteDeletion: { ...previous, ...status, searchVerification } });
+      return { ...status, searchVerification };
     }
     return status;
   }));

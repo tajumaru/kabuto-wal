@@ -2,6 +2,9 @@ import { test, expect } from "@playwright/test";
 test("コード検索・銘柄名検索・未知コード・キーボード選択", async ({ page }) => {
   await page.goto("/");
   const input = page.getByRole("combobox", { name: "銘柄", exact: true });
+  await expect(input).toHaveValue("");
+  await expect(page.getByText(/^選択中：/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "＋ 監視に追加" })).toBeDisabled();
   await input.fill("７２０３");
   await expect(
     page.getByRole("option", { name: "7203 架空モビリティ", exact: true }),

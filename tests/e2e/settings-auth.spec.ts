@@ -23,3 +23,21 @@ test("デモでのAPIアクセス成功を本人確認済みと表示しない",
   await expect(panel.getByRole("button", { name: "本人確認を始める" })).toBeVisible();
   await expect(panel.getByText("本人確認済み", { exact: true })).toHaveCount(0);
 });
+
+test("接続解除でログアウトし、本人確認の画面に戻る", async ({ page }) => {
+  let loggedOut = false;
+  await page.route("**/api/status", (route) => route.fulfill(loggedOut
+    ? { status: 401, json: { error: "本人確認が必要です" } }
+    : { json: { mode: "live" } }));
+  await page.route("**/api/auth/logout", async (route) => {
+    expect(route.request().method()).toBe("POST");
+    loggedOut = true;
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.goto("/settings");
+  const panel = page.locator("#owner-wallet");
+  await panel.getByRole("button", { name: "ウォレット接続解除" }).click();
+  await expect(panel.getByRole("button", { name: "本人確認を始める" })).toBeVisible();
+  await expect(panel.getByText("本人確認済み", { exact: true })).toHaveCount(0);
+  expect(loggedOut).toBe(true);
+});

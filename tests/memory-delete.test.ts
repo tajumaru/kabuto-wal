@@ -37,11 +37,45 @@ async function fixture() {
   });
   const app = Fastify();
   app.setErrorHandler((e, _req, reply) => reply.code(e instanceof DeleteApiError ? e.statusCode : 400).send({ error: (e as Error).message, ...(e instanceof DeleteApiError ? { code: e.code } : {}) }));
-  registerMemoryDelete(app, service, fetcher as typeof fetch);
+  const verifySearch = vi.fn(async () => ({ state: "absent" as const, namespace: "kabutowal:v1:profile", checkedAt: new Date().toISOString(), limit: 50 }));
+  registerMemoryDelete(app, service, fetcher as typeof fetch, verifySearch);
   cleanups.push(async () => { await app.close(); await rm(root, { recursive: true, force: true }); });
   const request = (action: string, body: any = { token: "ephemeral-test-token" }) => app.inject({ method: "POST", url: `/api/memories/${id}/remote-delete/${action}`, payload: body });
-  return { app, service, id, batchId, calls, request, fetcher, state: (value: string) => { state = value; }, timeout: () => { submitTimeout = true; }, disable: () => { available = false; } };
+  return { app, service, id, batchId, calls, request, fetcher, verifySearch, state: (value: string) => { state = value; }, timeout: () => { submitTimeout = true; }, disable: () => { available = false; } };
 }
+it("削除取引完了後の再検索が失敗したら未確認とし、再送せず検証を再試行する", async () => {
+  const f = await fixture();
+  await f.request("prepare");
+  f.verifySearch.mockRejectedValueOnce(Error("recall failed"));
+  const submitted = (await f.request("submit", { token: "token", signature: "signature" })).json();
+  expect(submitted).toMatchObject({ state: "completed", searchVerification: { state: "pending" } });
+  expect((await f.request("status")).json().searchVerification.state).toBe("absent");
+  expect(f.calls.filter((call) => call.path.endsWith("/submit"))).toHaveLength(1);
+});
+it("保存先変更時は外部APIを呼ぶ前に停止する", async () => {
+  const f = await fixture();
+  await f.service.store.write(`sync/${f.id}.json`, { status: "synced", blobId: "only-this-blob", environmentBinding: "different-account" });
+  expect((await f.request("prepare")).json().code).toBe("ENVIRONMENT_MISMATCH");
+  expect(f.fetcher).not.toHaveBeenCalled();
+});
+it("直接削除済みのblobでは旧V1の認証・準備・送信を外部通信前に拒否する", async () => {
+  const f = await fixture();
+  await f.service.store.write(`sync/${f.id}.json`, { status: "deleted", blobId: "only-this-blob", directWalrusDeletion: { state: "completed", digest: "direct-tx" } });
+  for (const action of ["challenge", "verify", "prepare", "submit"]) {
+    expect((await f.request(action)).json().code).toBe("BLOB_ALREADY_DELETED");
+  }
+  expect(f.fetcher).not.toHaveBeenCalled();
+});
+
+it("旧V1取引がある削除済みblobは認証と結果確認を続けられるが再削除できない", async () => {
+  const f = await fixture(); await f.request("prepare");
+  await f.request("submit", { token: "token", signature: "signature" });
+  expect((await f.request("challenge", {})).statusCode).toBe(200);
+  expect((await f.request("status")).json().state).toBe("completed");
+  expect((await f.request("prepare")).json().code).toBe("BLOB_ALREADY_DELETED");
+  expect((await f.request("submit", { token: "token", signature: "signature" })).json().code).toBe("BLOB_ALREADY_DELETED");
+  expect(f.calls.filter(call => call.path.endsWith("/submit"))).toHaveLength(1);
+});
 it("所有者認証を使い対象blobを1件だけ準備し、削除完了後もローカル記録を残す", async () => {
   const f = await fixture();
   expect((await f.request("challenge", {})).json().challenge).toBe("sign exact bytes");

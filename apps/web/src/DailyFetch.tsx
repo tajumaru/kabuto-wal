@@ -1,6 +1,6 @@
 import { displayStockCode } from "./stock-search";
 type Step = { step?: string; code?: string; count?: number; status?: string; dataAsOf?: string; requestedThrough?: string; error?: string; horizon?: number };
-type Job = { recordId: string; createdAt: string; status: string; steps: Step[] };
+type Job = { recordId: string; createdAt: string; status: string; durationMs?: number; steps: Step[] };
 const time = (value: string) => {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "日時不明" : new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle: "medium", timeStyle: "medium" }).format(date);
@@ -25,9 +25,9 @@ export function DailyFetch({ jobs = [] }: { jobs?: Job[] }) {
     <h3>実行履歴 <small>最新{history.length}件</small></h3>
     {!history.length && <p className="muted">実行後に、銘柄ごとの取得状況がここに表示されます。</p>}
     <div className="fetch-history">{history.map((job, index) => <details key={job.recordId} open={index === 0} className="fetch-run">
-      <summary><time dateTime={job.createdAt}>{time(job.createdAt)}</time><span className={`fetch-badge ${job.status === "failed" ? "fetch-warning" : job.status === "done" ? "fetch-success" : ""}`}>{label(job.status)}</span></summary>
+      <summary><time dateTime={job.createdAt}>{time(job.createdAt)}</time><span className={`fetch-badge ${job.status === "failed" ? "fetch-warning" : job.status === "done" ? "fetch-success" : ""}`}>{label(job.status)}</span>{job.durationMs !== undefined && <span>{(job.durationMs / 1000).toFixed(1)} 秒</span>}</summary>
       {job.steps.some((s) => s.step === "prices") && <div className="fetch-table-scroll"><table className="fetch-table"><thead><tr><th>銘柄コード</th><th>反映状況</th><th>取得件数</th><th>データ基準日</th><th>取得対象日まで</th></tr></thead><tbody>{job.steps.filter((s) => s.step === "prices").map((s, i) => <tr key={i}><td>{s.code ? displayStockCode(s.code) : "—"}</td><td><span className={`fetch-badge ${s.status === "ok" ? "fetch-success" : "fetch-warning"}`}>{label(s.status ?? "不明")}</span></td><td>{s.count?.toLocaleString("ja-JP") ?? "—"} 件</td><td>{s.dataAsOf ?? "—"}</td><td>{s.requestedThrough ?? "—"}</td></tr>)}</tbody></table></div>}
-      {job.steps.filter((s) => s.step !== "prices" || s.error).map((s, i) => <p key={i} className={s.error ? "error" : "muted"}>{s.step === "evaluation" ? `予測評価：${s.count ?? 0} 件` : s.step === "forecast" ? `予測作成：${s.code ? displayStockCode(s.code) : ""}（${s.horizon ?? "—"}日）` : s.step === "memwal" ? "MemWal同期" : s.step ?? "処理"}{s.error ? `：${s.error}` : ""}</p>)}
+      {job.steps.filter((s) => s.step !== "prices" || s.error).map((s, i) => <p key={i} className={s.error ? "error" : "muted"}>{s.step === "evaluation" ? `予測評価：${s.count ?? 0} 件` : s.step === "forecast" ? `予測作成：${s.code ? displayStockCode(s.code) : ""}（${s.horizon ?? "—"}日）` : s.step === "memwal" ? (s.status === "deferred" ? "MemWal同期：次回の定期ジョブで実行" : "MemWal同期") : s.step === "reference" ? "銘柄一覧・営業日カレンダー確認" : s.step ?? "処理"}{s.error ? `：${s.error}` : ""}</p>)}
       {!job.steps.length && <p className="muted">処理結果はまだ記録されていません。</p>}
     </details>)}</div>
   </section>;

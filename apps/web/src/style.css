@@ -1,4 +1,137 @@
 @import "tailwindcss";
+.reset-scope-note { margin: 20px 0; padding: 16px 20px; border-left: 3px solid #b78748; border-radius: 0 8px 8px 0; background: var(--soft); }
+.reset-scope-note strong { font-size: 13px; }
+.reset-scope-note p { margin: 8px 0 0; max-width: 75ch; }
+.reset-details { margin: 18px 0; color: var(--muted); font-size: 12px; }
+.reset-details summary { cursor: pointer; padding: 6px 0; }
+.reset-details p { max-width: 75ch; }
+.memory-delete > button,
+.memory-delete .toolbar > button,
+.memory-delete .delete-footer > button {
+  min-height: 40px;
+  padding: 9px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.6;
+  transition: background .15s, border-color .15s;
+}
+.memory-delete > button { margin: 8px 10px 8px 0; }
+.memory-delete > button:hover,
+.memory-delete .toolbar > button:hover,
+.memory-delete .delete-footer > button:hover { background: var(--soft); border-color: var(--muted); }
+.memory-delete button.delete-primary { background: var(--text); color: var(--surface); border-color: var(--text); }
+.memory-delete button.delete-primary:hover { background: var(--muted); border-color: var(--muted); }
+.memory-delete button.delete-danger { background: #a54141; color: #fff; border-color: #a54141; }
+.memory-delete button.delete-danger:hover { background: #8b3333; border-color: #8b3333; }
+.memory-delete button.delete-close { background: transparent; border-color: transparent; color: var(--muted); margin-left: auto; }
+.memory-delete .delete-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--border); margin-top: 24px; padding-top: 18px; }
+.memory-delete > label { display: flex; align-items: flex-start; gap: 10px; margin: 18px 0; font-size: 13px; line-height: 1.8; }
+.memory-delete input[type="checkbox"] { margin-top: 5px; accent-color: var(--text); }
+.memory-delete > [role="status"]:empty { display: none; }
+.memory-delete button:focus-visible { outline: 2px solid var(--muted); outline-offset: 3px; }
+.memory-delete button:disabled { cursor: not-allowed; }
+@media (max-width: 600px) { .memory-delete .delete-footer { align-items: stretch; } .memory-delete .delete-footer > button { white-space: normal; text-align: left; } }
+
+/* Keep destructive controls visually distinct from the memory reading cards. */
+.memory-delete-area { scroll-margin-top: 24px; }
+section.card.memory-delete {
+  --delete-accent: #9b3c32;
+  --delete-line: #e9c4ba;
+  --delete-bg: #fff6f2;
+  background: var(--delete-bg);
+  border: 1px solid var(--delete-line);
+  border-left: 6px solid var(--delete-accent);
+  box-shadow: 0 6px 22px rgb(115 51 35 / 5%);
+}
+.memory-delete .delete-zone-heading { display: flex; justify-content: flex-start; align-items: center; flex-wrap: nowrap; height: auto; background: transparent; color: var(--text); gap: 14px; padding: 0 0 20px; margin-bottom: 20px; border-bottom: 1px solid var(--delete-line); }
+.delete-zone-icon { display: grid; place-items: center; flex: 0 0 44px; height: 44px; border-radius: 12px; color: var(--delete-accent); background: #f9e2da; }
+.delete-zone-heading .delete-zone-label { margin: 0 0 5px; font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--delete-accent); }
+.delete-zone-heading h3 { margin: 0; font-size: 18px; font-weight: 650; line-height: 1.6; }
+.memory-delete .memory-delete-preview { background: var(--surface); border: 1px solid var(--delete-line); border-radius: 10px; padding: 20px; margin-bottom: 22px; }
+.memory-delete-preview .delete-preview-label { margin: 0 0 14px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.memory-delete .delete-footer { border-top-color: var(--delete-line); }
+:root[data-theme="dark"] section.card.memory-delete { --delete-accent: #f0aaa0; --delete-line: #674440; --delete-bg: #302321; }
+:root[data-theme="dark"] .delete-zone-icon { background: #51312c; }
+@media (max-width: 600px) {
+  .memory-delete .delete-zone-heading { gap: 10px; align-items: flex-start; }
+  .delete-zone-heading h3 { font-size: 16px; }
+  .memory-delete .memory-delete-preview { padding: 14px; }
+}
+.memory-library > .toolbar > .action > button {
+  background: var(--text);
+  color: var(--surface);
+  border: 1px solid var(--text);
+  font-weight: 600;
+}
+.memory-library > .toolbar > .action > button:hover { background: var(--muted); border-color: var(--muted); }
+.memory-library .memory-actions { gap: 10px; margin: 24px 0 0; padding-top: 18px; border-top: 1px solid var(--border); }
+.memory-actions .action > button,
+.memory-actions > button {
+  min-height: 38px;
+  padding: 8px 14px;
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 1.6;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.memory-actions .action > button:hover,
+.memory-actions > button:hover { background: var(--soft); color: var(--text); border-color: var(--muted); }
+.memory-actions > .memory-delete { margin-left: auto; border-color: transparent; background: transparent; color: #a34e4e; }
+.memory-actions > .memory-delete:hover { border-color: transparent; background: rgb(163 78 78 / 8%); color: #963939; }
+.memory-actions > .memory-review { margin-left: auto; border-color: transparent; background: transparent; }
+.memory-library button:focus-visible { outline: 2px solid var(--muted); outline-offset: 3px; }
+.memory-library button:disabled { cursor: not-allowed; }
+.memory-actions .action-spinner { border-color: var(--border); border-top-color: var(--text); }
+:root[data-theme="dark"] .memory-actions > .memory-delete { color: #eaa2a2; }
+@media (max-width: 600px) {
+  .memory-actions > .memory-delete, .memory-actions > .memory-review { margin-left: 0; }
+  .memory-actions > small { flex-basis: 100%; }
+}
+.settings-page .action > button,
+.settings-page .wallet-secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 3%);
+  transition: background .15s, border-color .15s;
+}
+.settings-page .action > button:hover,
+.settings-page .wallet-secondary:hover { background: var(--soft); border-color: var(--muted); }
+.settings-page .wallet-verify { background: var(--text); color: var(--surface); border: 1px solid var(--text); }
+.settings-page .wallet-verify:hover { background: var(--muted); border-color: var(--muted); }
+.settings-page button:disabled { cursor: not-allowed; }
+.settings-page .action-spinner { border-color: var(--border); border-top-color: var(--text); }
+.wallet-card { overflow: hidden; }
+.wallet-heading { display: flex; align-items: center; gap: 14px; margin-bottom: 26px; }
+.wallet-symbol { display: grid; place-items: center; width: 48px; height: 48px; flex-shrink: 0; border: 1px solid var(--border); background: var(--soft); border-radius: 14px; color: var(--text); }
+.wallet-eyebrow { display: block; font-size: 10px; font-weight: 600; letter-spacing: .16em; color: var(--muted); margin-bottom: 5px; }
+.wallet-card .wallet-heading h2 { margin: 0; font-size: 18px; letter-spacing: .02em; }
+.wallet-connected { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 22px; background: var(--soft); border: 1px solid var(--border); border-radius: 12px; }
+.wallet-card .wallet-status { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 15px; font-weight: 600; }
+.wallet-status-dot { width: 8px; height: 8px; border-radius: 50%; background: #319477; box-shadow: 0 0 0 4px rgb(49 148 119 / 10%); }
+.wallet-card .wallet-description { margin: 9px 0 0; font-size: 12px; color: var(--muted); line-height: 1.8; }
+.wallet-disconnect { flex-shrink: 0; max-width: 100%; }
+.wallet-card .wallet-disconnect button, .wallet-card .wallet-secondary { background: var(--surface); color: var(--muted); border: 1px solid var(--border); padding: 10px 15px; font-size: 12px; border-radius: 8px; transition: background .15s, color .15s; }
+.wallet-card .wallet-disconnect button:hover, .wallet-card .wallet-secondary:hover { color: var(--text); background: var(--page); }
+.wallet-card button:focus-visible { outline: 2px solid #168bd1; outline-offset: 4px; }
+.wallet-card button:disabled { cursor: not-allowed; }
+.wallet-card .wallet-footer { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 18px; }
+.wallet-footer > span { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .03em; }
+.wallet-card .wallet-footer p { color: var(--muted); font-size: 12px; line-height: 1.9; margin: 8px 0 0; max-width: 65ch; }
+.wallet-steps { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 22px; color: var(--muted); font-size: 12px; }
+.wallet-steps b { display: inline-grid; place-items: center; width: 25px; height: 25px; margin-right: 5px; background: var(--soft); border-radius: 50%; font-size: 10px; font-weight: 500; color: var(--text); }
+.wallet-steps i { font-style: normal; opacity: .5; }
+.wallet-connect-controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.wallet-login > p { font-size: 13px; line-height: 1.9; max-width: 65ch; margin: 18px 0; }
+.wallet-card .wallet-verify { margin-top: 2px; padding: 12px 22px; font-weight: 600; }
+.wallet-card .wallet-feedback { padding: 12px 16px; border-left: 2px solid #168bd1; background: var(--soft); }
+@media (max-width: 600px) { .wallet-connected { align-items: flex-start; flex-direction: column; gap: 18px; padding: 18px; } .wallet-heading { gap: 12px; } .wallet-card .wallet-heading h2 { font-size: 16px; } }
 :root {
   font-family: Inter, "Noto Sans JP", Arial, sans-serif;
   color: var(--text);
@@ -312,8 +445,37 @@ header {
   display: block;
 }
 .stockcard > .action {
-  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
+.stockcard > .action > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  transition: color .15s, background .15s;
+}
+.stockcard > .action > button::before {
+  content: "−";
+  font-size: 16px;
+  line-height: 1;
+}
+.stockcard > .action > button:hover { background: var(--soft); color: var(--text); }
+.stockcard > .action > button:focus-visible { outline: 2px solid var(--muted); outline-offset: 2px; }
+.stockcard > .action > button:disabled { cursor: not-allowed; }
+.stockcard > .action .action-spinner { border-color: var(--border); border-top-color: var(--text); }
+.stockcard > .action .error { flex-basis: 100%; }
 .price {
   font-size: 25px;
   font-weight: 600;

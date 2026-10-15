@@ -1,5 +1,19 @@
 import { test, expect } from "@playwright/test";
 
+test("直接削除済みの記憶は旧V1の切替と再削除を表示せず、索引確認を残す", async ({ page }) => {
+  await page.route("**/api/memories", route => route.fulfill({ json: [{ recordId: "a".repeat(64), text: "削除済みの方針", active: false, kind: "user_memory", createdAt: "2026-10-14T00:00:00Z", sync: { status: "deleted", blobId: "deleted-blob", directWalrusDeletion: { state: "completed", digest: "tx" } } }] }));
+  await page.route("**/api/memory-delete/config", route => route.fulfill({ json: { enabled: true, owner: "0x123", network: "mainnet" } }));
+  await page.goto("/memories");
+  await page.getByRole("button", { name: "blob削除済み・検索索引を確認" }).click();
+  const panel = page.getByRole("region", { name: "MemWalから記憶を削除" });
+  await expect(panel).toContainText("Walrusのblob削除済みです");
+  await expect(page.getByLabel("旧V1のSecurity Delete APIを使用する")).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: /署名して|対象blobと削除取引/ })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "削除結果を確認" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "保存区分の検索索引削除を開く" })).toBeEnabled();
+  await panel.screenshot({ path: "test-results/delete-panel.png" });
+});
+
 test("無効化を残し、保存済み記憶だけにMemWal削除の確認画面を開く", async ({ page }) => {
   const memories = [
     { recordId: "11111111-1111-4111-8111-111111111111", text: "保存済みの方針", kind: "user_memory", active: true, createdAt: "2026-10-14T00:00:00Z", sync: { status: "synced", blobId: "selected-blob" } },
@@ -22,9 +36,9 @@ test("無効化を残し、保存済み記憶だけにMemWal削除の確認画�
   await panel.getByText("削除対象の詳細（元データ・ID）", { exact: true }).click();
   await expect(panel.getByText("対象blob：selected-blob", { exact: true })).toBeVisible();
   await expect(panel).toContainText("元に戻せません");
-  await expect(panel.getByRole("button", { name: "署名してMemWalから削除" })).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "対象blobと削除取引を確認" })).toBeDisabled();
   await panel.getByRole("checkbox").check();
-  await expect(panel.getByRole("button", { name: "署名してMemWalから削除" })).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "対象blobと削除取引を確認" })).toBeDisabled();
   await panel.getByRole("button", { name: "閉じる", exact: true }).click();
   await expect(panel).toHaveCount(0);
   expect(mutations).toEqual([]);

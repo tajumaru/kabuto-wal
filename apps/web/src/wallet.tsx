@@ -10,7 +10,7 @@ import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Transaction } from "@mysten/sui/transactions";
 const config = await (await fetch("/api/wallet-config")).json();
 const network: "testnet" | "mainnet" =
-  config.network === "mainnet" ? "mainnet" : "testnet";
+  config.network === "testnet" ? "testnet" : "mainnet";
 const kit = createDAppKit({
   networks: [network],
   createClient: (network) =>
@@ -19,21 +19,40 @@ const kit = createDAppKit({
       baseUrl: config.endpoint,
     }),
 });
+export async function disconnectWallet() {
+  const response = await fetch("/api/auth/logout", { method: "POST" });
+  if (!response.ok) throw Error("ログアウトできませんでした。もう一度お試しください。");
+  if (kit.stores.$connection.get().wallet) await kit.disconnectWallet();
+  window.location.reload();
+}
 function Login() {
   const kit = useDAppKit(),
     account = useCurrentAccount(),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false);
   return (
-    <>
+    <div className="wallet-login">
+      <div className="wallet-steps" aria-label="本人確認の流れ"><span><b>01</b> ウォレット接続</span><i aria-hidden="true">→</i><span><b>02</b> 署名で本人確認</span></div>
+      <div className="wallet-connect-controls">
       <ConnectButton />
+      {account && <button className="wallet-secondary" disabled={busy} onClick={async () => {
+        setBusy(true);
+        try {
+          await disconnectWallet();
+        } catch (e) {
+          setMessage((e as Error).message);
+        } finally {
+          setBusy(false);
+        }
+      }}>ウォレット接続解除</button>}
+      </div>
       <p>
         {account
           ? "ウォレットは接続済みです。本人確認するには、下のボタンを押し、ウォレットに表示される署名リクエストを承認してください。"
           : "まずウォレットを接続してください。接続後、「本人確認を始める」を押し、ウォレットで署名を承認します。"}
       </p>
-      <p className="muted">この操作はログインのための本人確認です。送金やガス代は発生しません。認証は1時間有効です。</p>
       <button
+        className="wallet-verify"
         disabled={!account || busy}
         onClick={async () => {
           setBusy(true);
@@ -64,9 +83,9 @@ function Login() {
       >
         {busy ? "ウォレットでの承認を待っています…" : "本人確認を始める"}
       </button>
-      <p role="status">{message}</p>
-      <small>MemWalの連携設定は、本人確認後に「接続状態」で確認できます。</small>
-    </>
+      {message && <p className="wallet-feedback" role="status">{message}</p>}
+      <div className="wallet-footer"><span>送金なし · ガス代なし · 認証は1時間有効</span><p>この操作はログインのための本人確認です。MemWalの連携設定は、本人確認後に「接続状態」で確認できます。</p></div>
+    </div>
   );
 }
 export async function anchorPrediction(id: string) {
