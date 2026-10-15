@@ -22,7 +22,9 @@ export type Calendar = { date: string; open: boolean }[];
 export const direction = (r: number) =>
   r > 0.005 ? "up" : r < -0.005 ? "down" : "flat";
 export function targetDate(calendar: Calendar, date: string, n: number) {
-  const dates = calendar.filter((d) => d.open && d.date > date);
+  const dates = calendar
+    .filter((d) => d.open && d.date > date)
+    .sort((a, b) => a.date.localeCompare(b.date));
   if (dates.length < n) throw Error("取引カレンダー不足");
   return dates[n - 1].date;
 }
@@ -131,35 +133,61 @@ export function similar(
     methodVersion: "neighbors-v1",
   };
 }
-export const predictionSchema = z.object({
-  schemaVersion: z.literal(1),
-  recordId: z.string(),
-  kind: z.literal("prediction"),
-  createdAt: z.string(),
-  source: z.string(),
-  predictionId: z.string(),
-  providerCode: z.string(),
-  mode: z.enum(["demo", "research", "backtest", "live"]),
-  generatedAt: z.string(),
-  dataAsOf: z.string(),
-  horizonSessions: z.union([z.literal(1), z.literal(5), z.literal(20)]),
-  targetSessionDate: z.string(),
-  referencePrice: z.number().positive(),
-  referenceBasis: z.string(),
-  predictedReturn: z.number(),
-  expectedPrice: z.number(),
-  returnQuantiles: z.tuple([z.number(), z.number()]),
-  pUp: z.number().min(0).max(1),
-  sampleCount: z.number().min(20),
-  inputRevisionIds: z.array(z.string()),
-  candidateIds: z.array(z.string()),
-  featureVersion: z.string(),
-  methodVersion: z.string(),
-  model: z.string(),
-  promptVersion: z.string(),
-  reason: z.string(),
-  falsification: z.string(),
-});
+export const predictionSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    recordId: z.string(),
+    kind: z.literal("prediction"),
+    createdAt: z.string(),
+    source: z.string(),
+    predictionId: z.string(),
+    providerCode: z.string(),
+    mode: z.enum(["demo", "research", "backtest", "live"]),
+    generatedAt: z.string(),
+    dataAsOf: z.string(),
+    horizonSessions: z.union([z.literal(1), z.literal(5), z.literal(20)]),
+    targetSessionDate: z.string(),
+    referencePrice: z.number().positive(),
+    referenceBasis: z.string(),
+    predictedReturn: z.number(),
+    expectedPrice: z.number(),
+    returnQuantiles: z.tuple([z.number(), z.number()]),
+    pUp: z.number().min(0).max(1),
+    sampleCount: z.number().int().min(1),
+    inputRevisionIds: z.array(z.string()),
+    candidateIds: z.array(z.string()),
+    featureVersion: z.string(),
+    methodVersion: z.string(),
+    model: z.string(),
+    promptVersion: z.string(),
+    reason: z.string(),
+    falsification: z.string(),
+    dejavu: z
+      .object({
+        schemaVersion: z.literal(1),
+        compareCode: z.string(),
+        asOf: z.string(),
+        evaluationStatus: z.literal("pending"),
+        sourceDejavuRecordId: z.string(),
+        dataCutoff: z.string(),
+        consensusScore: z.number().min(-1).max(1).nullable(),
+        weightedReturn: z.number().nullable(),
+        medianReturn: z.number(),
+        upRatio: z.number(),
+        percentileRange: z.tuple([z.number(), z.number()]),
+        exampleIds: z.array(z.string()),
+        selection: z.string(),
+        dnaSummary: z.string(),
+      })
+      .optional(),
+  })
+  .refine(
+    (p) =>
+      p.methodVersion === "dejavu-consensus-v1"
+        ? !!p.dejavu
+        : p.sampleCount >= 20,
+    "通常予測は20件以上、デジャヴ予測は分析根拠が必要です",
+  );
 export type Prediction = z.infer<typeof predictionSchema>;
 export function evaluate(p: Prediction, bars: Bar[]) {
   const base = bars.find((b) => b.sessionDate === p.dataAsOf),

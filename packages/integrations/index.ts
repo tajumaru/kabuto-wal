@@ -135,7 +135,7 @@ export async function syncMemories(
       continue;
     const key = `sync/${memory.recordId}.json`;
     const state = await store.read(key, { status: "pending" });
-    if (state.status === "synced" || state.status === "uncertain") continue;
+    if (state.status === "synced" || state.status === "uncertain" || state.status === "deleted" || state.remoteDeletion || state.searchResetAt || memory.remoteDeletedAt) continue;
     if (state.status === "submitting" && !state.jobId) {
       await store.write(key, {
         ...state,

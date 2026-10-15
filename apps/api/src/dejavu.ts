@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { dejavu } from "../../../packages/core/dejavu";
+import { consensus, dna } from "../../../packages/core/dejavu-consensus";
 import type { Bar } from "../../../packages/core/index";
 import { notice } from "../../../packages/core/assistant";
 import type { Service } from "./service";
@@ -39,9 +40,12 @@ export async function searchDejavu(
   const asOf = date || history.at(-1)?.sessionDate;
   if (!asOf) throw Error("比較元の日足なし");
   const cutoff = date ? `${asOf}T14:59:59.999Z` : new Date().toISOString();
+  const querySnapshot = await snapshot(service, code, cutoff);
   const result = dejavu(
-    await snapshot(service, compareCode, cutoff),
-    await snapshot(service, code, cutoff),
+    compareCode === code
+      ? querySnapshot
+      : await snapshot(service, compareCode, cutoff),
+    querySnapshot,
     asOf,
     cutoff,
     await service.store.read("market/calendar.json"),
@@ -61,6 +65,8 @@ export async function searchDejavu(
     .digest("hex");
   return {
     ...result,
+    consensus: consensus(result.examples),
+    dna: result.examples.map(dna),
     recordId,
     providerCode: code,
     compareCode,
@@ -196,11 +202,15 @@ export async function recallDejavu(
       provider =
         provider === undefined ? await service.memoryProvider() : provider;
       if (provider) {
-        const batches = await Promise.all([ns, legacyNs].map((targetNamespace) => provider!.recall({
-          query: `${code} カブまる デジャヴ相場 OHLCV 類似`,
-          namespace: targetNamespace,
-          limit: 20,
-        })));
+        const batches = await Promise.all(
+          [ns, legacyNs].map((targetNamespace) =>
+            provider!.recall({
+              query: `${code} カブまる デジャヴ相場 OHLCV 類似`,
+              namespace: targetNamespace,
+              limit: 20,
+            }),
+          ),
+        );
         for (const r of batches.flatMap((batch) => batch.results)) {
           if (r.text.length > 200000) continue;
           try {

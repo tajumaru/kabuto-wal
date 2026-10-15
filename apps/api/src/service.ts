@@ -4,6 +4,7 @@ import { OpenAiLlm } from "../../../packages/integrations/llm";
 import { bitcoin, bitcoinAt } from "../../../packages/integrations/bitcoin";
 import { verifyMemwalAccount } from "../../../packages/integrations/sui";
 import { collectNotices } from "./assistant";
+import { reflectionNamespace } from "./dejavu-journal";
 import { demoBars, calendar, master } from "../../../fixtures/demo";
 import {
   evaluate,
@@ -357,7 +358,7 @@ export class Service {
       if (!result) {
         await this.store.write(`predictions/${p.predictionId}/state.json`, {
           ...meta("prediction_state"),
-          status: "missing",
+          status: p.dejavu ? "pending" : "missing",
           reason: "期限日の価格欠損",
         });
         continue;
@@ -366,23 +367,84 @@ export class Service {
         .update(JSON.stringify(result))
         .digest("hex");
       const key = `evaluations/${p.predictionId}/${hash}.json`;
-      if (await this.store.read(key, null)) continue;
-      await this.store.write(
-        key,
-        { ...meta("evaluation"), predictionId: p.predictionId, ...result },
-        true,
-      );
+      const exists = await this.store.read(key, null);
+      if (!exists)
+        await this.store.write(
+          key,
+          {
+            ...meta("evaluation"),
+            predictionId: p.predictionId,
+            ...result,
+            ...(p.dejavu
+              ? {
+                  dejavu: {
+                    predictedMedian: p.predictedReturn,
+                    consensusScore: p.dejavu.consensusScore,
+                    sampleCount: p.sampleCount,
+                    dna: p.dejavu.dnaSummary,
+                    consensusDirectionMatch:
+                      p.dejavu.consensusScore === null
+                        ? null
+                        : Math.sign(p.dejavu.consensusScore) ===
+                          Math.sign(result.actualReturn),
+                  },
+                }
+              : {}),
+          },
+          true,
+        );
       await this.store.write(`predictions/${p.predictionId}/state.json`, {
         ...meta("prediction_state"),
         status: "evaluated",
       });
-      await this.addMemory(
-        `予測${p.predictionId}のリターン誤差は${(result.returnError * 100).toFixed(2)}%。原因は価格だけでは特定できません。`,
-        "lesson",
-        p.providerCode,
-      );
-      count++;
+      if (p.dejavu) {
+        // Evaluation and memory are independently idempotent, so interrupted jobs can resume.
+        const digest = createHash("sha256")
+          .update(`${p.predictionId}:${hash}:reflection-v1`)
+          .digest("hex");
+        const recordId = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-5${digest.slice(13, 16)}-a${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
+        const memoryKey = `memories/${recordId}.json`;
+        if (!(await this.store.read(memoryKey, null))) {
+          const observations = {
+            actualReturn: result.actualReturn,
+            predictedReturn: p.predictedReturn,
+            sampleCount: p.sampleCount,
+            directionMatch: result.directionMatch,
+            dna: p.dejavu.dnaSummary,
+          };
+          const interpretation =
+            "観測だけでは一致・不一致の原因を特定できません。次回も特徴量の差と少数事例への依存を確認してください。";
+          await this.store.write(
+            memoryKey,
+            {
+              ...meta("dejavu_reflection"),
+              recordId,
+              active: true,
+              mode: this.mode,
+              providerCode: p.providerCode,
+              predictionId: p.predictionId,
+              dataAsOf: p.targetSessionDate,
+              namespace: reflectionNamespace(this.mode, p.providerCode),
+              observations,
+              interpretation,
+              text: `${p.dataAsOf}基準・比較銘柄${p.dejavu.compareCode}・${p.horizonSessions}営業日先。中央値${(p.predictedReturn * 100).toFixed(2)}%、実績${(result.actualReturn * 100).toFixed(2)}%。方向${result.directionMatch ? "一致" : "不一致"}。事例${p.sampleCount}件。${p.dejavu.dnaSummary} 解釈：${interpretation}`,
+            },
+            true,
+          );
+        }
+        if (!(await this.store.read(`sync/${recordId}.json`, null)))
+          await this.store.write(`sync/${recordId}.json`, {
+            status: "pending",
+          });
+      } else if (!exists)
+        await this.addMemory(
+          `予測${p.predictionId}のリターン誤差は${(result.returnError * 100).toFixed(2)}%。原因は価格だけでは特定できません。`,
+          "lesson",
+          p.providerCode,
+        );
+      if (!exists) count++;
     }
+    await this.store.rebuild();
     return count;
   }
   async addMemory(text: string, kind = "user_memory", code?: string) {
@@ -453,7 +515,12 @@ export class Service {
             : []),
         ];
         const remotes = await Promise.all(
-          [...namespaces, ...namespaces.map((ns) => ns.replace(/^kabutowal:/, "stock-memory:"))].map((namespace) =>
+          [
+            ...namespaces,
+            ...namespaces.map((ns) =>
+              ns.replace(/^kabutowal:/, "stock-memory:"),
+            ),
+          ].map((namespace) =>
             provider!.recall({
               query:
                 process.env.ALLOW_MARKET_DATA_TO_MEMWAL === "true"
@@ -541,22 +608,47 @@ export class Service {
           text: `ウォッチリストの変動幅による確認候補：${s.name} (${s.providerCode})、基準日${s.last!.sessionDate}、前営業日比${(s.change! * 100).toFixed(2)}%。投資推奨や利益予測ではありません。`,
         });
     }
-    if (this.mode !== "demo" && /ビットコイン|bitcoin|\bBTC\b/i.test(question)) {
+    if (
+      this.mode !== "demo" &&
+      /ビットコイン|bitcoin|\bBTC\b/i.test(question)
+    ) {
       try {
         const btc = await bitcoin(this.store);
         const latest = btc.prices.at(-1)!;
-        evidence.push({ recordId: `btc-${latest[0]}`, text: `BTC価格（CoinGecko・円建て）：${latest[1].toLocaleString("ja-JP")}円。観測時刻 ${new Date(latest[0]).toISOString()}。取得時刻 ${btc.fetchedAt}。` });
+        evidence.push({
+          recordId: `btc-${latest[0]}`,
+          text: `BTC価格（CoinGecko・円建て）：${latest[1].toLocaleString("ja-JP")}円。観測時刻 ${new Date(latest[0]).toISOString()}。取得時刻 ${btc.fetchedAt}。`,
+        });
         if (code) {
           const bars = (await this.history(code)).slice(-2);
           if (bars.length === 2) {
             const [previous, last] = bars;
-            const a = bitcoinAt(btc.prices, previous.sessionDate), b = bitcoinAt(btc.prices, last.sessionDate);
-            if (a && b && previous.adjClose !== null && last.adjClose !== null && previous.adjClose > 0) evidence.push({ recordId: `btc-compare-${code}-${last.sessionDate}`, text: `BTCと株価の比較：${previous.sessionDate}→${last.sessionDate}、株価 ${(100 * (last.adjClose / previous.adjClose - 1)).toFixed(2)}％、BTC ${(100 * (b[1] / a[1] - 1)).toFixed(2)}％。BTCは各日の日本時間15:30以前の直近観測値（最大2時間前）を使用：${new Date(a[0]).toISOString()} / ${new Date(b[0]).toISOString()}。同期間の変動比較であり因果関係を示しません。` });
-            else evidence.push({recordId: "btc-comparison-unavailable", text: "株価の日付に対応するBTC観測値が不足しているため、同期間の比較はできません。"});
+            const a = bitcoinAt(btc.prices, previous.sessionDate),
+              b = bitcoinAt(btc.prices, last.sessionDate);
+            if (
+              a &&
+              b &&
+              previous.adjClose !== null &&
+              last.adjClose !== null &&
+              previous.adjClose > 0
+            )
+              evidence.push({
+                recordId: `btc-compare-${code}-${last.sessionDate}`,
+                text: `BTCと株価の比較：${previous.sessionDate}→${last.sessionDate}、株価 ${(100 * (last.adjClose / previous.adjClose - 1)).toFixed(2)}％、BTC ${(100 * (b[1] / a[1] - 1)).toFixed(2)}％。BTCは各日の日本時間15:30以前の直近観測値（最大2時間前）を使用：${new Date(a[0]).toISOString()} / ${new Date(b[0]).toISOString()}。同期間の変動比較であり因果関係を示しません。`,
+              });
+            else
+              evidence.push({
+                recordId: "btc-comparison-unavailable",
+                text: "株価の日付に対応するBTC観測値が不足しているため、同期間の比較はできません。",
+              });
           }
         }
       } catch (e) {
-        evidence.push({recordId: "btc-unavailable", text: e instanceof Error ? e.message : "BTC価格を取得できませんでした。"});
+        evidence.push({
+          recordId: "btc-unavailable",
+          text:
+            e instanceof Error ? e.message : "BTC価格を取得できませんでした。",
+        });
       }
     }
     const groupedEvidence = new Map<string, string[]>();

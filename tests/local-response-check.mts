@@ -21,7 +21,7 @@ const comparison = await llm.answer("BTCが下がったから？", [{recordId:"b
 assert.match(comparison.answer, /BTCと株価の比較/);
 assert.match(comparison.answer, /判断できません/);
 console.log("BTC比較の未来データ除外・欠損判定・原因非断定: OK");
-const quotes = {bitcoin:{jpy:100,jpy_24h_change:null,last_updated_at:1700000000}, sui:{jpy:50,jpy_24h_change:-2,last_updated_at:1700000000}, solana:{jpy:10,jpy_24h_change:3,last_updated_at:1700000000}};
+const quotes = {bitcoin:{jpy:100,jpy_24h_change:null,last_updated_at:1700000000}, sui:{jpy:50,jpy_24h_change:-2,last_updated_at:1700000000}, solana:{jpy:10,jpy_24h_change:3,last_updated_at:1700000000}, "walrus-2":{jpy:5,jpy_24h_change:1,last_updated_at:1700000000}};
 assert.equal(parseCryptoQuotes(quotes)[0].change24h, null);
 assert.throws(()=>parseCryptoQuotes({...quotes,bitcoin:{...quotes.bitcoin,jpy:-1}}));
 const originalKey = process.env.COINGECKO_API_KEY;
@@ -32,6 +32,7 @@ const fakeStore = {read:async()=>stored,write:async(_:string,value:unknown)=>{st
 const fakeFetch = async(url:unknown)=>{calls++;return new Response(JSON.stringify(String(url).includes("market_chart")?{prices:[[1700000000000,100],[1700003600000,110]]}:quotes));};
 await fetchCryptoWatch(fakeStore as any, fakeFetch as typeof fetch);
 await fetchCryptoWatch(fakeStore as any, fakeFetch as typeof fetch);
-assert.equal(calls,4);
+assert.equal(calls,5);
+assert.equal(parseCryptoQuotes(quotes)[3].symbol, "WAL");
 if(originalKey===undefined) delete process.env.COINGECKO_API_KEY; else process.env.COINGECKO_API_KEY=originalKey;
 console.log("仮想通貨の欠損率・不正価格拒否・1時間キャッシュ: OK");

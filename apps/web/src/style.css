@@ -676,6 +676,10 @@ dd {
   outline: 3px solid #158bd1;
   outline-offset: 4px;
 }
+.kabumaru img[src$="/kabumaru_warning.png"] {
+  /* The source image has fragments of another illustration along its top edge. */
+  clip-path: inset(5% 0 0);
+}
 .kabumaru-caption {
   background: var(--k-bg);
   border: 1px solid var(--k-line);
@@ -1066,7 +1070,7 @@ dd {
 .crypto-watch { margin-top: 24px; }
 .crypto-watch h2 { margin: 0; }
 .crypto-watch .sectionhead { flex-wrap: wrap; gap: 12px; }
-.crypto-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; margin: 18px 0; }
+.crypto-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 16px; margin: 18px 0; }
 .crypto-grid article { padding: 16px; border: 1px solid var(--border); border-radius: 12px; min-width: 0; }
 .crypto-grid .price { font-size: 23px; margin-top: 12px; }
 .crypto-grid small { display: block; }
@@ -1087,3 +1091,32 @@ dd {
 :root[data-theme="dark"] .badge, :root[data-theme="dark"] .fetch-badge { background: #1e3042; color: #c3d8ec; }
 @media(max-width: 700px) { header { flex-wrap: wrap; gap: 10px; } .theme-toggle { padding: 8px 12px; } }
 :root[data-theme="dark"] { --brand-accent: #69c3ff; }
+.dejavu-research { display: grid; gap: 20px; min-width: 0; }
+.dejavu-research .card { min-width: 0; margin: 0; }
+.dejavu-section-head { display:flex; justify-content:space-between; gap:16px; align-items:center; flex-wrap:wrap; }
+.dejavu-tabs { display:flex; gap:6px; flex-wrap:wrap; }
+.dejavu-tabs button[aria-pressed="true"] { background:#287e72; color:white; }
+.dejavu-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; margin:24px 0; }
+.dejavu-metrics > div { display:flex; flex-direction:column; gap:6px; }
+.dejavu-metrics strong { font-size:clamp(1.4rem,3vw,2rem); }
+.dejavu-metrics small, .dejavu-metrics span { opacity:.8; }
+.dejavu-scenarios { display:flex; gap:16px; flex-wrap:wrap; }
+.dejavu-scenarios p { flex:1; min-width:130px; padding:16px; background:rgba(65,179,163,.09); border-radius:12px; }
+.dejavu-scenarios strong { display:block; margin-top:8px; font-size:1.4rem; }
+.dejavu-explanation { display:flex; gap:20px; align-items:center; }
+.dejavu-kabumaru { width:130px; height:150px; object-fit:contain; flex-shrink:0; }
+.dejavu-dna { display:grid; gap:12px; margin:20px 0; }
+.dejavu-dna > div { display:grid; grid-template-columns:100px minmax(60px,1fr) 50px; gap:10px; align-items:center; }
+.dejavu-dna meter { width:100%; height:20px; accent-color:#41b3a3; }
+.dejavu-dna small { grid-column:2 / -1; opacity:.75; }
+.dejavu-journal, .dejavu-reflection { overflow-wrap:anywhere; }
+.dejavu-journal article, .dejavu-reflection { border-top:1px solid rgba(128,128,128,.25); padding:16px 0; }
+.dejavu-research select { max-width:100%; }
+@media(max-width:600px) {
+  .dejavu-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .dejavu-explanation { align-items:flex-start; gap:8px; }
+  .dejavu-kabumaru { width:70px; height:90px; }
+  .dejavu-research .chart { height:340px; }
+  .dejavu-research .recharts-legend-wrapper { font-size:10px; }
+  .dejavu-dna > div { grid-template-columns:80px minmax(40px,1fr) 42px; gap:6px; }
+}

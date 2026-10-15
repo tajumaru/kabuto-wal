@@ -1,5 +1,7 @@
 # KABUTO WAL
 
+デジャヴ相場2.0：過去類似事例の未来シナリオ・DNA・かぶまる解説から、仮説記録と期限後の答え合わせ、MemWal反省ノートまでつながりました。[仕様と動作確認](docs/dejavu-v2.md)。
+
 日本株の研究用アプリ。React + Fastify + **JSONファイル**、実接続時の長期記憶は **MemWal SDK** を使用します。DBエンジン・DBサービスは導入していません。キーなしで7画面と主要導線が動くデモを用意しました。
 
 ## 起動
@@ -88,7 +90,7 @@ UTCのcron例（JST 17:30 / 18:00 / 19:00。パスを実環境に合わせる）
 
 `settings/market/prices/revisions/features/predictions/evaluations/chats/memories/indexes/sync/jobs/commitments/nonces/audit` にJSONを保存します。株価は銘柄×月、予測原本は `predictions/<id>/original.json`、評価は別ファイルです。索引は元ファイルから再生成できます。temp → fsync → renameを使用し、Linuxでは親ディレクトリも同期します。Windowsではディレクトリfsyncは対象外です。
 
-MemWalのremember受付は `accepted/jobId`、保存完了は `synced/blobId`。既知jobは再送せず追跡します。受付直後に中断しjob不明の場合はuncertainとして自動再送を停止します。SDK接続障害でもローカル記録は残ります。記憶の訂正・無効化はローカルで除外する機能で、遠隔Walrus保存の削除を保証しません。
+MemWalのremember受付は `accepted/jobId`、保存完了は `synced/blobId`。既知jobは再送せず追跡します。受付直後に中断しjob不明の場合はuncertainとして自動再送を停止します。SDK接続障害でもローカル記録は残ります。記憶の訂正・無効化はローカルで除外する機能です。別の「MemWalから削除」は、対応サーバーのSecurity Delete APIと所有者ウォレット署名で、選択した保存済みblobを削除します。ローカル記録は残して利用停止にし、自動再同期しません。通信断後は同じバッチの結果を確認します。設定・制限は[記憶削除の運用メモ](docs/memory-delete.md)を参照してください。
 
 設定画面で12文字以上のパスフレーズを入力して暗号化export。AES-256-GCM + scryptを使用し、元予測・索引・同期状態・commitment saltを含めます。キー・環境変数・ログインnonceは含めません。パスフレーズ紛失時は復元できません。復元時は原本競合と保存パスを検査します。運用バックアップは停止中のボリュームコピーも併用してください。MemWalのrecall/restoreだけでアプリ全件復旧はできません。
 

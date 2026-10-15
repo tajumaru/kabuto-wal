@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from "recharts";
+import { cryptoAssets } from "../../../packages/integrations/crypto-watch";
 export function CryptoWatch() {
   const query = useQuery({queryKey:["crypto-watch"],queryFn:async()=>{
     const r = await fetch("/api/crypto/watch");
@@ -15,8 +16,14 @@ export function CryptoWatch() {
     </div>
     {(error || query.error) && <p role="alert" className="error">{error || query.error?.message}</p>}
     {query.isPending && <p role="status">読み込み中…</p>}
-    {query.data && !query.data.assets.length && <p>「価格を取得」でBTC・SUI・SOLの価格と過去7日のグラフを確認できます。</p>}
-    {!!query.data?.assets.length && <div className="crypto-grid">{query.data.assets.map((a:any)=><article key={a.id}>
+    {query.data && !query.data.assets.length && <p>「価格を取得」でBTC・SUI・SOL・WALの価格と過去7日のグラフを確認できます。</p>}
+    <div className="crypto-grid">{cryptoAssets.map((asset)=>{
+      const a = query.data?.assets.find((item: {id: string})=>item.id===asset.id);
+      if (!a) return <article key={asset.id}>
+        <strong>{asset.symbol}</strong><span className="muted"> {asset.name}</span>
+        <p>価格未取得</p><p className="muted">「価格を取得」を押すと価格とグラフを表示します。</p>
+      </article>;
+      return <article key={a.id}>
       <strong>{a.symbol}</strong><span className="muted"> {a.name}</span>
       <div className="price">{a.price.toLocaleString("ja-JP",{maximumFractionDigits:a.price<1000?2:0})}円</div>
       <p className={a.change24h > 0 ? "crypto-rise" : a.change24h < 0 ? "crypto-fall" : undefined}>{a.change24h===null?"24時間変動：データなし":`${a.change24h>0?"+":""}${a.change24h.toFixed(2)}% ${a.change24h>0?"上昇":a.change24h<0?"下落":"変化なし"}`}</p>
@@ -32,7 +39,7 @@ export function CryptoWatch() {
           </AreaChart></ResponsiveContainer>
         </div>
       </>:<p className="muted">{a.historyError||"履歴未取得"}</p>}
-    </article>)}</div>}
+    </article>;})}</div>
     <small>手動取得 · 1時間以内は取得済み価格を表示{query.data?.fetchedAt?` · 最終取得 ${date(query.data.fetchedAt)} JST`:""} · <a href="https://www.coingecko.com" target="_blank" rel="noreferrer">価格データ：CoinGecko</a></small>
   </section>;
 }

@@ -57,7 +57,7 @@ test("6画像・通知・チャットの状態・明示保存・モバイル・�
   const panel = page.getByRole("dialog", { name: "カブまるAIアシスタント" });
   await expect(panel).toBeVisible();
   await expect(
-    panel.getByText("DEMO・架空データ · 2026-10-09 · 72030"),
+    panel.getByText("DEMO・架空データ · 2026-10-09 · 7203"),
   ).toBeVisible();
   const picker = panel.getByRole("combobox", { name: "銘柄", exact: true });
   await picker.fill("7203");

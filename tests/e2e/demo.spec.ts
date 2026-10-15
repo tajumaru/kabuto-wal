@@ -34,13 +34,22 @@ test("監視追加→詳細→類似→予測→期限後検証→記憶とチ�
   await page.getByRole("heading", { name: "架空テクノロジー" }).click();
   await expect(page.getByText("調整済み終値", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "類似相場を探す" }).click();
+  await page.getByText("計算根拠と統計", { exact: true }).click();
   await expect(page.getByText(/走査候補/)).toBeVisible();
   await page.goto("/predictions");
   await page.getByLabel("予測基準日").fill("2026-08-03");
   await page.getByRole("button", { name: "予測を生成" }).click();
-  await expect(page.getByText("72030 · 5営業日先")).toBeVisible();
+  const normalPrediction = page
+    .locator("article.prediction")
+    .filter({ hasText: "neighbors-v1" });
+  await expect(
+    normalPrediction.getByRole("heading", {
+      name: "7203 · 5営業日先",
+      exact: true,
+    }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "期限後の検証" }).click();
-  await expect(page.getByText(/ゼロ予測誤差/).first()).toBeVisible();
+  await expect(normalPrediction).toContainText("ゼロ予測誤差");
   await page.goto("/memories");
   const memoryText = "E2E方針：出来高が減るときは慎重に判断する " + Date.now();
   await page.getByLabel("新しい記憶").fill(memoryText);
@@ -53,7 +62,8 @@ test("監視追加→詳細→類似→予測→期限後検証→記憶とチ�
   await page.goto("/chat");
   await page.getByLabel("質問").fill("前の方針を振り返りたい");
   await page.getByRole("button", { name: "質問する →" }).click();
-  await expect(page.getByText(/recordId:/).first()).toBeVisible();
+  await page.getByText(/^参照資料・取得時刻を見る/).click();
+  await expect(page.locator(".reference").first()).toBeVisible();
   await page.goto("/settings");
   await expect(
     page.getByText("暗号化バックアップ", { exact: true }),

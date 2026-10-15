@@ -24,10 +24,6 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  LineChart,
-  Line,
-  ReferenceLine,
-  Legend,
   BarChart,
   Bar,
 } from "recharts";
@@ -35,10 +31,13 @@ import "./style.css";
 import { StockPicker } from "./StockPicker";
 import { displayStockCode } from "./stock-search";
 import { Kabumaru } from "./Kabumaru";
+import { DejavuResearch } from "./DejavuResearch";
 import { HomeBrand } from "./HomeBrand";
 import { DailyFetch } from "./DailyFetch";
 import { MemoryContent, memoryKindLabel, memorySyncLabel } from "./MemoryContent";
+import { MemoryReset } from "./MemoryReset";
 const Wallet = lazy(() => import("./wallet"));
+const MemoryDelete = lazy(() => import("./MemoryDelete"));
 export async function api(
   url: string,
   body?: unknown,
@@ -488,8 +487,6 @@ function Stock() {
 }
 function Similar() {
   const queryClient = useQueryClient();
-  const [saved, setSaved] = useState("");
-  const [saving, setSaving] = useState(false);
   const [compareEnabled, setCompareEnabled] = useState(false);
   const [compare, setCompare] = useState("");
   const [code, setCode] = useState(
@@ -545,148 +542,8 @@ function Similar() {
       {!code && <p role="status">日足を取得した銘柄を選んでください。</p>}
       {data?.ready === false && <div className="card" role="status"><h3>日足データの準備が必要です</h3><p>{data.message}</p><Link to="/">ホームで監視銘柄と日足を確認 →</Link></div>}
       {data?.notificationWarning && <p role="status">{data.notificationWarning}</p>}
-      {data && data.ready !== false && (
-        <>
-          <div className="card">
-            <p>
-              <strong>
-                {data.mode === "demo"
-                  ? "DEMO · 架空OHLCV"
-                  : "実データ · J-Quants取得日足"}
-              </strong>
-              <br />
-              検索範囲 {data.range}〜基準日 / 走査候補 {data.candidateCount}件 /
-              重複除外後 {data.sampleCount}件
-            </p>
-            <p className="muted">
-              OHLCVの重み：価格形状35%・リターン25%・ローソク足20%・出来高15%・変動率5%。候補のその後20営業日も比較元窓より前に限定。
-            </p>
-            <div className="chart">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={Array.from({ length: 40 }, (_, i: number) => ({
-                    day: i - 19,
-                    current: i < 20 ? data.query.shape[i] : null,
-                    ...Object.fromEntries(
-                      data.examples.map((e: any, n: number) => [
-                        "case" + n,
-                        i < 20 ? e.shape[i] : e.futureShape[i - 20],
-                      ]),
-                    ),
-                  }))}
-                >
-                  <XAxis dataKey="day" />
-                  <ReferenceLine x={0} stroke="#777" label="基準日" />
-                  <Legend />
-                  <YAxis domain={["auto", "auto"]} />
-                  <Tooltip />
-                  <Line
-                    dataKey="current"
-                    name="比較元（その後は未表示）"
-                    stroke="#1589d0"
-                    strokeWidth={3}
-                    dot={false}
-                  />
-                  {data.examples.map((_: any, i: number) => (
-                    <Line
-                      key={i}
-                      dataKey={"case" + i}
-                      name={data.examples[i].end + " 過去事例"}
-                      stroke={
-                        ["#41b3a3", "#d7a746", "#9a86c7", "#dd8b84", "#829ca8"][
-                          i
-                        ]
-                      }
-                      dot={false}
-                    />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          <div className="card">
-            <p>
-              基準日 {data.asOf} / 取得時点 {data.cutoff} /{" "}
-              {data.featureVersion}
-            </p>
-            <p>
-              横軸0が各窓の最終日。左は20営業日、右は過去事例のその後20営業日です。比較元の未来は表示しません。
-            </p>
-            {!data.examples.length && (
-              <p role="status">
-                条件を満たす過去候補がありません。OHLCV欠損・取得時点・履歴の長さを確認してください。
-              </p>
-            )}
-            <button
-              disabled={saving || !data.examples.length}
-              onClick={async () => {
-                setSaving(true);
-                setSaved("");
-                try {
-                  const r = await api("/dejavu/save", {
-                    code,
-                    asOf: date || undefined,
-                    compareCode: compare || undefined,
-                  });
-                  setSaved(
-                    r.sync.status === "synced"
-                      ? "MemWal保存完了（blob確認済み）"
-                      : r.sync.status === "accepted"
-                        ? "MemWal受付済み・保存完了待ち"
-                        : data.mode === "demo"
-                          ? "デモの記憶をローカル保存しました。外部送信しません。"
-                          : "ローカル保存済み。MemWal同期は接続・外部送信許可に従います。",
-                  );
-                } catch (e) {
-                  setSaved(e instanceof Error ? e.message : "保存失敗");
-                } finally {
-                  setSaving(false);
-                }
-              }}
-            >
-              {saving ? "保存中…" : "このデジャヴ相場を記憶する"}
-            </button>
-            <p role="status">{saved}</p>
-            <DejavuMemories code={code} date={date} saved={saved} />
-          </div>
-          <div className="tablewrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>比較期間</th>
-                  <th>類似度 / 内訳</th>
-                  <th>翌営業日</th>
-                  <th>5営業日後</th>
-                  <th>20営業日後</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.examples.map((e: any) => (
-                  <tr key={e.id}>
-                    <td>
-                      {e.start}〜{e.end}
-                    </td>
-                    <td>
-                      {e.score.toFixed(1)} / 100
-                      <details>
-                        <summary>特徴量の距離</summary>
-                        {Object.entries(e.components).map(([k, v]) => (
-                          <div key={k}>
-                            {k}: {Number(v).toFixed(3)}
-                          </div>
-                        ))}
-                      </details>
-                    </td>
-                    {[1, 5, 20].map((h) => (
-                      <td key={h}>{percent(e.future[h])}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
+      {code && !data && !error && <p role="status">20営業日の特徴量と過去事例を分析中…</p>}
+      {data && data.ready !== false && <DejavuResearch key={data.recordId} data={data} code={code} date={date} compare={compare} request={api} memories={<DejavuMemories code={code} date={date} saved="" />} />}
     </>
   );
 }
@@ -1011,6 +868,8 @@ function Chat() {
   );
 }
 function Memories() {
+  const queryClient = useQueryClient();
+  const [deleting, setDeleting] = useState<any>(null);
   const { data = [] } = useData("/memories");
   const { data: stocks = [] } = useData("/master");
   const [query, setQuery] = useState(""),
@@ -1037,6 +896,7 @@ function Memories() {
         />
         <Action onClick={() => api("/memories", { text })}>記憶を保存</Action>
       </div>
+      {deleting && <Suspense fallback={<p>削除画面を準備中…</p>}><MemoryDelete key={deleting.recordId} memory={deleting} stocks={stocks} onClose={() => { setDeleting(null); void queryClient.invalidateQueries({ queryKey: ["/memories"] }); }} onDone={() => { void queryClient.invalidateQueries({ queryKey: ["/memories"] }); }} /></Suspense>}
       {data
         .filter((m: any) => [m.text, memoryKindLabel(m.kind), displayStockCode(m.providerCode || ""), stocks.find((s: any) => s.providerCode === m.providerCode)?.name || ""].some((value) => value.toLowerCase().includes(query.toLowerCase())))
         .map((m: any) => (
@@ -1069,6 +929,10 @@ function Memories() {
               >
                 訂正する
               </Action>
+              <button disabled={!m.sync?.blobId || m.sync?.status === "deleted"} onClick={() => setDeleting(m)}>
+                {m.sync?.status === "deleted" ? "MemWalから削除済み" : m.sync?.remoteDeletion && !["failed", "rolled_back"].includes(m.sync.remoteDeletion.state) ? "削除結果を確認" : "MemWalから削除"}
+              </button>
+              {!m.sync?.blobId && <small>MemWal保存完了後に削除できます。</small>}
             </div>
           </article>
         ))}
@@ -1076,7 +940,15 @@ function Memories() {
   );
 }
 function Settings() {
-  const { data } = useData("/status");
+  const { data, error, isPending } = useQuery({
+    queryKey: ["/status"],
+    queryFn: () => api("/status"),
+    refetchInterval: 30000,
+    retry: false,
+  });
+  // In live mode /status is protected by the server's session validation.
+  // Demo access and stale data after a failed session check are not authentication.
+  const authenticated = !!data && data.mode !== "demo" && !error;
   const [password, setPassword] = useState(""),
     [payload, setPayload] = useState("");
   return (
@@ -1114,6 +986,11 @@ function Settings() {
       </div>
       <div className="card" id="owner-wallet">
         <h2>KABUTO WAL · 本人確認</h2>
+        {isPending ? <p role="status">本人確認の状態を確認中…</p> : authenticated ? <>
+          <p role="status"><span className="badge">本人確認済み</span></p>
+          <p>本人ウォレットでの認証が完了しています。</p>
+          <p className="muted">MemWalの連携設定は「接続状態」で確認できます。認証の有効期限が切れると、再度本人確認が必要です。</p>
+        </> : <>
         <Suspense
           fallback={
             <p className="brand-loading" role="status">
@@ -1124,6 +1001,7 @@ function Settings() {
         >
           <Wallet />
         </Suspense>
+        </>}
       </div>
       <div className="card">
         <h2>暗号化バックアップ</h2>
@@ -1168,6 +1046,7 @@ function Settings() {
           </Action>
         </div>
       </div>
+      <MemoryReset authenticated={authenticated} />
       <DailyFetch jobs={data?.jobs} />
     </>
   );

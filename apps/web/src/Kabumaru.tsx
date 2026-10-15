@@ -25,6 +25,9 @@ const poseNames = {
 };
 const asset = (pose: KabumaruPose) =>
   `/characters/kabumaru/kabumaru_${pose}${pose === "discover" ? "_clean" : ""}.png`;
+export function KabumaruPortrait({ pose }: { pose: KabumaruPose }) {
+  return <img className="dejavu-kabumaru" src={asset(pose)} alt={`カブまる：${poseNames[pose]}`} />;
+}
 async function request(path: string, body?: unknown) {
   const response = await fetch("/api" + path, {
     credentials: "same-origin",

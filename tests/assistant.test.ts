@@ -76,7 +76,7 @@ it("過去基準日の類似結果を正しい日付で保存し検索対象に�
     expect(notifications).toHaveLength(1);
     expect(notifications[0].dataAsOf).toBe(date);
     expect((await service.memories())[0].namespace).toBe(
-      "stock-memory:v1:market:72030",
+      "kabutowal:v1:market:72030",
     );
   } finally {
     await rm(root, { recursive: true, force: true });

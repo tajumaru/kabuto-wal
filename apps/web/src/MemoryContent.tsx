@@ -1,14 +1,44 @@
 import { displayStockCode } from "./stock-search";
 
 export const memoryKindLabel = (kind: string) => ({
-  dejavu_memory: "似た値動きの分析", user_memory: "方針・メモ",
+  dejavu_memory: "似た値動きの分析", dejavu_reflection: "デジャヴの反省ノート", user_memory: "方針・メモ",
   prediction_memory: "予測の記録", lesson_memory: "検証の振り返り",
   market_analysis: "相場の分析", chat_memory: "会話の記録",
 })[kind] ?? "保存記録";
 
 export function memorySyncLabel(status?: string, blobId?: string) {
+  if (status === "deleted") return "MemWalから削除済み";
   if (status === "synced") return blobId ? "MemWal保存完了" : "MemWal保存完了未確認";
   return ({ pending: "MemWal同期待ち", submitting: "MemWal送信処理中", accepted: "MemWal受付済み・保存完了待ち", uncertain: "MemWal送信結果不明", failed: "MemWal同期失敗", local: "アプリ内のみ保存" })[status ?? ""] ?? "MemWal保存未確認";
+}
+
+export function MemoryDeletePreview({ memory, stocks }: { memory: any; stocks: any[] }) {
+  let parsed: any;
+  try { parsed = JSON.parse(memory.text); } catch { /* Plain notes are displayed directly. */ }
+  const payload = memory.payload || (parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null);
+  const code = memory.providerCode || payload?.providerCode;
+  const stock = stocks.find((item) => item.providerCode === code);
+  const stockLabel = code ? `${stock?.name || "銘柄"}（${displayStockCode(code)}）` : "銘柄指定なし";
+  const asOf = memory.dataAsOf || payload?.asOf;
+  const date = new Date(memory.createdAt);
+  const savedAt = Number.isNaN(date.getTime()) ? "保存日時不明" : new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle: "medium", timeStyle: "short" }).format(date);
+  const examples = Array.isArray(payload?.examples) ? payload.examples : null;
+  const period = Array.isArray(payload?.range) ? payload.range.filter((v: unknown) => typeof v === "string").join(" ～ ") : typeof payload?.range === "string" ? payload.range : null;
+  const note = payload ? [payload.summary, payload.answer, payload.text].find((value) => typeof value === "string" && !["{", "["].includes(value.trimStart()[0])) : memory.text;
+  return <div className="memory-delete-preview">
+    <span className="badge">{memoryKindLabel(memory.kind)}</span>
+    <h4>{stockLabel}</h4>
+    <p className="muted">保存日時：{savedAt}（日本時間）</p>
+    {asOf && <p>分析基準日：{asOf}</p>}
+    {period && <p>分析対象期間：{period}</p>}
+    {examples ? <p>過去の似た値動きを{examples.length}件まとめた分析記憶です。</p> : <p className="memory-note">{note || "分析データを保存した記憶です。元の内容は詳細で確認できます。"}</p>}
+    {examples?.length > 0 && <p className="muted">類似期間の例：{examples.slice(0, 3).map((example: any) => `${example.start || "不明"} ～ ${example.end || "不明"}`).join("、")}{examples.length > 3 ? " ほか" : ""}</p>}
+    <details className="memory-details"><summary>削除対象の詳細（元データ・ID）</summary>
+      <p style={{ overflowWrap: "anywhere" }}>記録ID：{memory.recordId}</p>
+      <p style={{ overflowWrap: "anywhere" }}>対象blob：{memory.sync?.blobId}</p>
+      <pre style={{ maxHeight: 240, overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{payload ? JSON.stringify(payload, null, 2) : memory.text}</pre>
+    </details>
+  </div>;
 }
 
 export function MemoryContent({ memory, stocks }: { memory: any; stocks: any[] }) {
@@ -41,15 +71,18 @@ export function MemoryContent({ memory, stocks }: { memory: any; stocks: any[] }
       <p className="muted">「その後」は過去の実績です。類似度は上昇確率ではありません。未取得の実績は「—」で表示します。</p>
     </> : <p className="memory-note">{memory.text}</p>}
     <p className="muted">保存日時：{savedTime}（日本時間）</p>
-    <p className="memory-storage-note">{memory.sync?.status === "synced" && memory.sync?.blobId
+    <p className="memory-storage-note">{memory.sync?.status === "deleted" ? "MemWalから削除済みです。このアプリ内の記録は残っています。自動で再同期しません。" : memory.sync?.status === "synced" && memory.sync?.blobId
       ? "保存先：このアプリ ＋ MemWal（保存完了のblob IDを確認済み）"
       : memory.sync?.status === "accepted"
         ? "このアプリには保存済みです。MemWalは受付済みですが、保存完了はまだ確認できていません。"
         : "このアプリには保存済みです。MemWalへの保存完了は確認できていません。"}</p>
     <details className="memory-details"><summary>保存データの詳細</summary>
+      {memory.sync?.searchResetAt && <p>MemWal検索リセットの対象です。原本は残り、このアプリからの自動再送は停止しています。</p>}
       <p className="muted">記録ID：{memory.recordId}</p>
       {memory.sync?.blobId && <p style={{overflowWrap:"anywhere"}}>MemWal blob ID：{memory.sync.blobId}</p>}
       {memory.sync?.jobId && <p style={{overflowWrap:"anywhere"}}>MemWal受付ジョブID：{memory.sync.jobId}</p>}
+      {memory.sync?.remoteDeletion && <p style={{overflowWrap:"anywhere"}}>MemWal削除状態：{memory.sync.remoteDeletion.state} · バッチID：{memory.sync.remoteDeletion.batchId}</p>}
+      {memory.sync?.remoteDeletion?.digest && <p style={{overflowWrap:"anywhere"}}>削除トランザクション：{memory.sync.remoteDeletion.digest}</p>}
       {analysis && <pre>{JSON.stringify(payload, null, 2)}</pre>}
     </details>
   </div>;

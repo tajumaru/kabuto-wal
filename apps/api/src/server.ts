@@ -1,5 +1,9 @@
 import { searchDejavu, notifyDejavu, saveDejavu, recallDejavu } from "./dejavu";
+import { registerDejavuJournal } from "./dejavu-journal";
+import { syncMemories } from "../../../packages/integrations/index";
 import Fastify from "fastify";
+import { DeleteApiError, registerMemoryDelete } from "./memory-delete";
+import { registerMemoryReset } from "./memory-reset";
 import { fetchCryptoWatch } from "../../../packages/integrations/crypto-watch";
 import cookie from "@fastify/cookie";
 import staticFiles from "@fastify/static";
@@ -38,8 +42,9 @@ export async function createApp(service = new Service()) {
   await app.register(cookie);
   const secret = process.env.SESSION_SECRET || randomBytes(32).toString("hex");
   app.setErrorHandler((err, req, reply) =>
-    reply.code(err instanceof Error && err.message.startsWith("別の処理（日足取得など）") ? 503 : 400).send({
+    reply.code(err instanceof DeleteApiError ? err.statusCode : err instanceof Error && err.message.startsWith("別の処理（日足取得など）") ? 503 : 400).send({
       error: err instanceof Error ? err.message : "処理に失敗しました",
+      ...(err instanceof DeleteApiError ? { code: err.code } : {}),
     }),
   );
   app.addHook("onRequest", async (req, reply) => {
@@ -77,6 +82,9 @@ export async function createApp(service = new Service()) {
       return reply.code(401).send({ error: "セッション期限切れ" });
     }
   });
+  registerMemoryDelete(app, service);
+  registerMemoryReset(app, service);
+  registerDejavuJournal(app, service);
   app.get("/api/auth/challenge", async () =>
     service.store.lock(async () => {
       const nonce = randomBytes(32).toString("hex"),
@@ -262,7 +270,7 @@ export async function createApp(service = new Service()) {
         compareCode: code.optional(),
         asOf: z
           .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .date()
           .optional(),
       })
       .parse(req.query);
@@ -288,7 +296,7 @@ export async function createApp(service = new Service()) {
         compareCode: code.optional(),
         asOf: z
           .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .date()
           .optional(),
       })
       .parse(req.body);
@@ -303,7 +311,7 @@ export async function createApp(service = new Service()) {
         code,
         asOf: z
           .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .date()
           .optional(),
       })
       .parse(req.query);
@@ -387,9 +395,15 @@ export async function createApp(service = new Service()) {
       return service.forecast(b.code, b.horizon, b.asOf);
     }),
   );
-  app.post("/api/evaluations", async () =>
-    service.store.lock(async () => ({ count: await service.evaluateDue() })),
-  );
+  app.post("/api/evaluations", async () => service.store.lock(async () => {
+    const count = await service.evaluateDue();
+    let syncError: string | undefined;
+    if (service.mode !== "demo" && process.env.ALLOW_MARKET_DATA_TO_MEMWAL === "true") {
+      try { await syncMemories(service.store, await service.memoryProvider(), true); }
+      catch { syncError = "評価は保存済み。MemWalは未接続のため次回ジョブで再同期します。"; }
+    }
+    return { count, syncError };
+  }));
   app.get("/api/memories", async () => service.memories());
   app.post("/api/memories", async (req) =>
     service.store.lock(async () => {
