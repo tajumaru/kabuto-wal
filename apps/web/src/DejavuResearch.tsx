@@ -1,3 +1,4 @@
+import { dejavuEvaluationListSchema, dejavuExplanationSchema, dejavuForecastResponseSchema, dejavuSaveResponseSchema, evaluationResponseSchema } from "../../../packages/core/dejavu-api-schema";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -12,10 +13,11 @@ import {
   YAxis,
 } from "recharts";
 import { KabumaruPortrait } from "./Kabumaru";
-import type { searchDejavu } from "../../api/src/dejavu";
+import type { z } from "zod";
+import { dejavuResultSchema } from "../../../packages/core/dejavu-api-schema";
 
-type Result = Awaited<ReturnType<typeof searchDejavu>>;
-type Request = (url: string, body?: unknown) => Promise<any>;
+type Result = z.infer<typeof dejavuResultSchema>;
+type Request = (url: string, body?: unknown) => Promise<unknown>;
 const pct = (n: number | null | undefined) =>
   typeof n === "number" && Number.isFinite(n)
     ? `${(n * 100).toFixed(2)}%`
@@ -43,11 +45,11 @@ export function DejavuResearch({
   const params = `code=${code}${date ? `&asOf=${date}` : ""}${compare ? `&compareCode=${compare}` : ""}`;
   const explanation = useQuery({
     queryKey: ["dejavu-explanation", data.recordId],
-    queryFn: () => request(`/dejavu/explanation?${params}`),
+    queryFn: async () => dejavuExplanationSchema.parse(await request(`/dejavu/explanation?${params}`)),
   });
   const journal = useQuery({
     queryKey: ["dejavu-journal", params],
-    queryFn: () => request(`/dejavu/evaluations?${params}`),
+    queryFn: async () => dejavuEvaluationListSchema.parse(await request(`/dejavu/evaluations?${params}`)),
   });
   const s = data.consensus.horizons[horizon];
   const d = data.dna[Math.min(example, data.dna.length - 1)];
@@ -65,25 +67,25 @@ export function DejavuResearch({
     setMessage("");
     try {
       if (action === "forecast") {
-        const r = await request("/dejavu/forecast", {
+        const r = dejavuForecastResponseSchema.parse(await request("/dejavu/forecast", {
           code,
           asOf: date || undefined,
           compareCode: compare || undefined,
-        });
+        }));
         setMessage(
           `1・5・20営業日の仮説を記録しました（${r.records.length}件）。同じ条件の原本は再作成しません。${r.syncError || ""}`,
         );
       } else if (action === "evaluate") {
-        const result = await request("/evaluations", {});
+        const result = evaluationResponseSchema.parse(await request("/evaluations", {}));
         setMessage(
           `取得済みの日足で答え合わせしました。期限前・未取得の実績は補完しません。${result.syncError || ""}`,
         );
       } else {
-        const r = await request("/dejavu/save", {
+        const r = dejavuSaveResponseSchema.parse(await request("/dejavu/save", {
           code,
           asOf: date || undefined,
           compareCode: compare || undefined,
-        });
+        }));
         setMessage(
           r.sync.status === "synced"
             ? "MemWal保存完了（blob確認済み）"
@@ -424,7 +426,7 @@ export function DejavuResearch({
           <p>この条件のデジャヴ予測はまだありません。</p>
         )}
         <div className="dejavu-journal">
-          {journal.data?.map((p: any) => {
+          {journal.data?.map((p) => {
             const e = p.evaluations.at(-1);
             return (
               <article key={p.predictionId}>
@@ -438,7 +440,7 @@ export function DejavuResearch({
                 </p>
                 <p>
                   {e
-                    ? `方向${e.directionMatch ? "一致" : "不一致"} · 過去の四分位範囲${e.inRange ? "内" : "外"} · Score ${p.dejavu.consensusScore?.toFixed(3) ?? "—"} · ${p.sampleCount}事例`
+                    ? `方向${e.directionMatch ? "一致" : "不一致"} · 過去の四分位範囲${e.inRange ? "内" : "外"} · Score ${p.dejavu?.consensusScore?.toFixed(3) ?? "—"} · ${p.sampleCount}事例`
                     : p.state.status === "missing"
                       ? "期限日の実績が不足しています。取得後に再評価します。"
                       : "実績取得待ち（pending）"}
@@ -458,7 +460,7 @@ export function DejavuResearch({
         {explanation.data?.reflections.error && (
           <p>{explanation.data.reflections.error}</p>
         )}
-        {explanation.data?.reflections.memories.map((m: any) => (
+        {explanation.data?.reflections.memories.map((m) => (
           <article className="dejavu-reflection" key={m.recordId}>
             <strong>観測事実</strong>
             <p>{m.text.split(" 解釈：")[0]}</p>

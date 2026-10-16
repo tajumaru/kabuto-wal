@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { z } from "zod";
+import { dejavuMemorySchema as storedSchema } from "../../../packages/core/dejavu-api-schema";
+import type { z } from "zod";
 import { dejavu } from "../../../packages/core/dejavu";
 import { consensus, dna } from "../../../packages/core/dejavu-consensus";
 import type { Bar } from "../../../packages/core/index";
@@ -181,31 +182,6 @@ export async function saveDejavu(
       process.env.ALLOW_MARKET_DATA_TO_MEMWAL === "true",
   };
 }
-const storedSchema = z.object({
-  kind: z.literal("dejavu_memory"),
-  active: z.literal(true),
-  recordId: z.string().regex(/^[a-f0-9]{64}$/),
-  mode: z.string(),
-  providerCode: z.string(),
-  namespace: z.string(),
-  createdAt: z.string().datetime(),
-  dataAsOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  text: z.string(),
-  payload: z.object({
-    recordId: z.string(),
-    asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    mode: z.string(),
-    providerCode: z.string(),
-    featureVersion: z.literal("ohlcv-20-v1"),
-    examples: z.array(
-      z.object({
-        start: z.string(),
-        end: z.string(),
-        score: z.number().finite().min(0).max(100),
-      }),
-    ),
-  }),
-});
 export async function recallDejavu(
   service: Service,
   code: string,

@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { dejavuMemoriesSchema, dejavuResultSchema } from "../../../packages/core/dejavu-api-schema";
 import { useResearchParams } from "./research-params";
 import React, { useState, useEffect, useId, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
@@ -496,17 +498,20 @@ function Similar() {
   const setCode = (value: string) => update("code", value);
   const setDate = (value: string) => update("asOf", value);
   const setCompare = (value: string) => update("compareCode", value);
-  const { data, error } = useData(
-    "/similar?code=" +
-      code +
-      (date ? "&asOf=" + date : "") +
-      (compare ? "&compareCode=" + compare : ""),
-    !!code && !invalid,
-  );
+  const { data, error } = useQuery({
+    queryKey: ["dejavu-analysis", code, date, compare],
+    queryFn: async () => {
+      const raw: unknown = await api(`/similar?${new URLSearchParams({ code, ...(date ? { asOf: date } : {}), ...(compare ? { compareCode: compare } : {}) })}`);
+      const unavailable = z.object({ ready: z.literal(false), message: z.string() }).safeParse(raw);
+      return unavailable.success ? unavailable.data : dejavuResultSchema.parse(raw);
+    },
+    enabled: !!code && !invalid,
+  });
+  const analysis = data && "recordId" in data ? data : undefined;
   useEffect(() => {
-    if (data?.recordId)
+    if (analysis?.recordId)
       void queryClient.invalidateQueries({ queryKey: ["kabumaru-feed"] });
-  }, [data?.recordId, queryClient]);
+  }, [analysis?.recordId, queryClient]);
   return (
     <>
       <Title
@@ -543,10 +548,10 @@ function Similar() {
       {invalid && <p role="alert">URLの銘柄コードまたは基準日が不正です。</p>}
       {error && <p role="alert">{error.message}</p>}
       {!code && <p role="status">日足を取得した銘柄を選んでください。</p>}
-      {data?.ready === false && <div className="card" role="status"><h3>日足データの準備が必要です</h3><p>{data.message}</p><Link to="/">ホームで監視銘柄と日足を確認 →</Link></div>}
-      {data?.notificationWarning && <p role="status">{data.notificationWarning}</p>}
+      {data && "ready" in data && data.ready === false && <div className="card" role="status"><h3>日足データの準備が必要です</h3><p>{data.message}</p><Link to="/">ホームで監視銘柄と日足を確認 →</Link></div>}
+      {analysis?.notificationWarning && <p role="status">{analysis.notificationWarning}</p>}
       {code && !data && !error && <p role="status">20営業日の特徴量と過去事例を分析中…</p>}
-      {data && data.ready !== false && <DejavuResearch key={data.recordId} data={data} code={code} date={date} compare={compare} request={api} memories={<DejavuMemories code={code} date={date} saved="" />} />}
+      {analysis && <DejavuResearch key={analysis.recordId} data={analysis} code={code} date={date} compare={compare} request={api} memories={<DejavuMemories code={code} date={date} saved="" />} />}
     </>
   );
 }
@@ -561,8 +566,8 @@ function DejavuMemories({
 }) {
   const { data, error } = useQuery({
     queryKey: ["dejavu-memories", code, date, saved],
-    queryFn: () =>
-      api("/dejavu/memories?code=" + code + (date ? "&asOf=" + date : "")),
+    queryFn: async () =>
+      dejavuMemoriesSchema.parse(await api("/dejavu/memories?code=" + code + (date ? "&asOf=" + date : ""))),
   });
   return (
     <details>
@@ -581,7 +586,7 @@ function DejavuMemories({
           {!data.memories.length && (
             <p>この時点で参照できる保存記憶はありません。</p>
           )}
-          {data.memories.map((m: any) => (
+          {data.memories.map((m) => (
             <p key={m.recordId}>
               {m.dataAsOf} · {m.payload.examples.length}事例 ·{" "}
               {m.mode === "demo" ? "架空" : "実データ"} ·{" "}
