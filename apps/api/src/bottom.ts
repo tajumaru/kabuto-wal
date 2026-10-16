@@ -169,6 +169,7 @@ export async function analyzeBottom(
         close: b.adjClose!,
         sma5: s5[i],
         sma20: s20[i],
+        open: b.adjOpen!, high: b.adjHigh!, low: b.adjLow!, volume: b.volume!,
       })),
   });
 }

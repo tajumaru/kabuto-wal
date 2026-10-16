@@ -46,6 +46,7 @@ export const bottomAnalysisSchema = z.object({
       close: z.number(),
       sma5: z.number().nullable(),
       sma20: z.number().nullable(),
+      open: z.number().optional(), high: z.number().optional(), low: z.number().optional(), volume: z.number().optional(),
     }),
   ),
 });
