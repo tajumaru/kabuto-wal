@@ -19,6 +19,10 @@ test("個別底打ち解析の根拠・過去基準日・既存デジャヴ導�
     fullPage: true,
   });
   await page.getByLabel("基準日", { exact: true }).fill("2026-08-03");
+  await page.goBack();
+  await expect(page.getByLabel("基準日", { exact: true })).toHaveValue("2026-10-09");
+  await page.goForward();
+  await expect(page.getByLabel("基準日", { exact: true })).toHaveValue("2026-08-03");
   await expect(
     page.getByRole("link", { name: "この銘柄のデジャヴ相場を見る" }),
   ).toHaveAttribute("href", "/similar?code=72030&asOf=2026-08-03");

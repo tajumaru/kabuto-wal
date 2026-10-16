@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useResearchParams } from "./research-params";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   ResponsiveContainer,
@@ -45,9 +45,7 @@ export function BottomResearch({
 }: {
   request: (url: string) => Promise<any>;
 }) {
-  const [params, setParams] = useSearchParams();
-  const code = params.get("code") || "";
-  const [date, setDate] = useState(params.get("asOf") || "");
+  const { code, date, invalid, update } = useResearchParams();
   const master = useQuery({
     queryKey: ["/master"],
     queryFn: () => request("/master"),
@@ -58,9 +56,9 @@ export function BottomResearch({
       request(
         `/bottom/analysis?code=${encodeURIComponent(code)}${date ? `&asOf=${date}` : ""}`,
       ),
-    enabled: !!code,
+    enabled: !!code && !invalid,
   });
-  const data = code ? result.data : undefined;
+  const data = code && !invalid ? result.data : undefined;
   return (
     <section className="bottom-research">
       <h1>底打ち研究</h1>
@@ -71,9 +69,7 @@ export function BottomResearch({
         <StockPicker
           stocks={master.data || []}
           value={code}
-          onChange={(v) =>
-            setParams(v ? { code: v, ...(date ? { asOf: date } : {}) } : {})
-          }
+          onChange={(v) => update("code", v)}
           loading={master.isPending}
         />
         <label>
@@ -81,20 +77,11 @@ export function BottomResearch({
           <input
             type="date"
             value={date}
-            onChange={(e) => {
-              setDate(e.target.value);
-              setParams(
-                code
-                  ? {
-                      code,
-                      ...(e.target.value ? { asOf: e.target.value } : {}),
-                    }
-                  : {},
-              );
-            }}
+            onChange={(e) => update("asOf", e.target.value)}
           />
         </label>
       </div>
+      {invalid && <p role="alert">URLの銘柄コードまたは基準日が不正です。</p>}
       {!code && <p>銘柄を選択してください。</p>}
       {code && result.isPending && <p role="status">日足を解析しています…</p>}
       {code && result.error && <p role="alert">{result.error.message}</p>}

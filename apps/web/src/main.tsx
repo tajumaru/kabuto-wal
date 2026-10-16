@@ -1,3 +1,4 @@
+import { useResearchParams } from "./research-params";
 import React, { useState, useEffect, useId, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { ChatAnswer } from "./ChatAnswer";
@@ -490,18 +491,17 @@ function Stock() {
 }
 function Similar() {
   const queryClient = useQueryClient();
-  const [compareEnabled, setCompareEnabled] = useState(false);
-  const [compare, setCompare] = useState("");
-  const [code, setCode] = useState(
-      new URLSearchParams(location.search).get("code") || "",
-    ),
-    [date, setDate] = useState(new URLSearchParams(location.search).get("asOf") || "");
+  const { code, date, compare, invalid, update } = useResearchParams();
+  const compareEnabled = !!compare;
+  const setCode = (value: string) => update("code", value);
+  const setDate = (value: string) => update("asOf", value);
+  const setCompare = (value: string) => update("compareCode", value);
   const { data, error } = useData(
     "/similar?code=" +
       code +
       (date ? "&asOf=" + date : "") +
       (compare ? "&compareCode=" + compare : ""),
-    !!code && (!compareEnabled || !!compare),
+    !!code && !invalid,
   );
   useEffect(() => {
     if (data?.recordId)
@@ -521,7 +521,6 @@ function Similar() {
             type="checkbox"
             checked={compareEnabled}
             onChange={(e) => {
-              setCompareEnabled(e.target.checked);
               setCompare(e.target.checked ? "67580" : "");
             }}
           />{" "}
@@ -541,6 +540,7 @@ function Similar() {
         比較元 {displayStockCode(code)} / 候補 {displayStockCode(compare || code)} · 20営業日窓 ·
         欠損窓と未来実績を除外
       </p>
+      {invalid && <p role="alert">URLの銘柄コードまたは基準日が不正です。</p>}
       {error && <p role="alert">{error.message}</p>}
       {!code && <p role="status">日足を取得した銘柄を選んでください。</p>}
       {data?.ready === false && <div className="card" role="status"><h3>日足データの準備が必要です</h3><p>{data.message}</p><Link to="/">ホームで監視銘柄と日足を確認 →</Link></div>}
