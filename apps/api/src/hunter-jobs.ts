@@ -142,6 +142,7 @@ export class HunterJobs {
       if (status === "completed") await this.service.store.lock(async () => {
         await this.service.store.write(`${base}/rankings/${id}/index.json`, rows.sort(compareHunterRows).map((r, i) => ({ ...r, rank: i + 1 })));
         await this.service.store.write(`${base}/indexes/latest.json`, { jobId: id, asOf: job!.input.asOf, cutoff: job!.cutoff, datasetId: index.id });
+        await this.service.store.write(`${base}/indexes/dates/${job!.input.asOf}.json`, { jobId: id });
       });
       job = await this.patch(id, token, { processed: rows.length, status, lease: undefined });
       return { ...job, coverage };

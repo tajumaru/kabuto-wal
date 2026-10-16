@@ -1,6 +1,7 @@
 import { searchDejavu, notifyDejavu, saveDejavu, recallDejavu } from "./dejavu";
 import { registerDejavuJournal } from "./dejavu-journal";
 import { registerBottom } from "./bottom";
+import { registerHunter } from "./hunter";
 import { syncMemories, syncWarning, verifyMemoryBinding } from "../../../packages/integrations/index";
 import Fastify from "fastify";
 import { DeleteApiError, registerMemoryDelete } from "./memory-delete";
@@ -89,6 +90,7 @@ export async function createApp(service = new Service()) {
   registerBlobDelete(app, service);
   registerDejavuJournal(app, service);
   registerBottom(app, service);
+  registerHunter(app, service);
   app.get("/api/auth/challenge", async () =>
     service.store.lock(async () => {
       const nonce = randomBytes(32).toString("hex"),
