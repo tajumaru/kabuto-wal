@@ -1,4 +1,5 @@
 import { MemWal } from "@mysten-incubation/memwal";
+import { projectDejavuMemory } from "../core/dejavu-memory";
 import { memwalEnvironment, memwalBinding } from "./memwal-config";
 
 import { isCauseQuestion } from "../core/question";
@@ -92,7 +93,7 @@ export async function syncMemories(
       if (!jobId) {
         const namespace = state.namespace || memory.namespace.replace(/^stock-memory:/, "kabutowal:");
         const idempotencyKey = state.idempotencyKey || randomUUID();
-        const pendingText = state.pendingText || JSON.stringify({ ...memory, namespace });
+        const pendingText = state.pendingText || JSON.stringify(projectDejavuMemory({ ...memory, namespace }));
         await store.write(key, { ...state, status: "submitting", namespace, idempotencyKey, pendingText, environmentBinding: provider.environmentBinding });
         const accepted = await provider.remember(
           pendingText,
