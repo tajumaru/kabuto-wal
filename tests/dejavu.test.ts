@@ -53,12 +53,13 @@ it("未来追加・未来実績変更は順位に影響せず、候補の結果�
   const a = dejavu(b, b, asOf, cutoff, calendar());
   expect(a.examples.length).toBeGreaterThan(0);
   expect(a.examples.every((c) => c.outcomeEnd < a.queryStart)).toBe(true);
+  expect(a.statisticalExamples.every((c) => c.outcomeEnd < a.queryStart)).toBe(true);
   const changed = b.map((x, i) => (i > 400 ? { ...x, adjClose: 999999 } : x));
   expect(dejavu(changed, changed, asOf, cutoff, calendar())).toEqual(a);
   expect(
     dejavu(b.slice(0, 401), b.slice(0, 401), asOf, cutoff, calendar()),
   ).toEqual(a);
-  for (const c of a.examples) expect(c.futureShape).toHaveLength(20);
+  for (const c of a.statisticalExamples) expect(c.futureShape).toHaveLength(20);
   const late = b.map((x) => ({ ...x, availableAt: "2099-01-01T00:00:00Z" }));
   expect(dejavu(late, b, asOf, cutoff, calendar()).candidateCount).toBe(0);
   expect(() =>

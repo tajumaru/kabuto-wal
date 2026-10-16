@@ -94,10 +94,12 @@ export function DejavuResearch({
               : `ローカル保存済み。同期状態：${r.sync.status}。${r.error || ""}`,
         );
       }
-      await client.invalidateQueries({ queryKey: ["dejavu-journal"] });
-      await client.invalidateQueries({ queryKey: ["dejavu-explanation"] });
-      await client.invalidateQueries({ queryKey: ["dejavu-memories"] });
-      await client.invalidateQueries({ queryKey: ["kabumaru-feed"] });
+      await Promise.all([
+        ...(action !== "save" ? [client.invalidateQueries({ queryKey: ["dejavu-journal", params] })] : []),
+        ...(action === "evaluate" ? [client.invalidateQueries({ queryKey: ["dejavu-explanation", data.recordId] })] : []),
+        ...(action !== "evaluate" ? [client.invalidateQueries({ queryKey: ["dejavu-memories", code, date] })] : []),
+        client.invalidateQueries({ queryKey: ["kabumaru-feed"] }),
+      ]);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "通信に失敗しました");
     } finally {
