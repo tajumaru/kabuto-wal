@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { dejavuMemorySchema as storedSchema } from "../../../packages/core/dejavu-api-schema";
 import type { z } from "zod";
 import { dejavu } from "../../../packages/core/dejavu";
-import { consensus, dna } from "../../../packages/core/dejavu-consensus";
+import { consensus, consensusComparison, dna } from "../../../packages/core/dejavu-consensus";
 import type { Bar } from "../../../packages/core/index";
 import { notice } from "../../../packages/core/assistant";
 import type { Service } from "./service";
@@ -65,7 +65,7 @@ export async function searchDejavu(
   if (!asOf) throw Error("比較元の日足なし");
   const cutoff = date ? `${asOf}T14:59:59.999Z` : new Date().toISOString();
   const querySnapshot = await snapshot(service, code, cutoff);
-  const result = dejavu(
+  const { statisticalExamples, ...result } = dejavu(
     compareCode === code
       ? querySnapshot
       : await snapshot(service, compareCode, cutoff),
@@ -90,6 +90,7 @@ export async function searchDejavu(
   return {
     ...result,
     consensus: consensus(result.examples),
+    statistics: consensusComparison(statisticalExamples),
     dna: result.examples.map(dna),
     recordId,
     providerCode: code,

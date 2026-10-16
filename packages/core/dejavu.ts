@@ -140,6 +140,7 @@ export function dejavu(
   return {
     query,
     examples: selected.slice(0, 5),
+    statisticalExamples: selected.slice(0, 20),
     candidateCount: candidates.length,
     sampleCount: selected.length,
     range: bars[0]?.sessionDate,

@@ -2,6 +2,7 @@ import { quantile } from "./index";
 import { WEIGHTS } from "./dejavu";
 
 export const CONSENSUS_METHOD = "dejavu-consensus-v1";
+export const COMPARISON_METHOD = "dejavu-consensus-comparison-v2";
 export const CONSENSUS_WEIGHT_POWER = 2;
 export const HORIZONS = [1, 5, 20] as const;
 export type DejaVuExample = {
@@ -108,6 +109,22 @@ export function consensus(examples: DejaVuExample[]) {
         upper: values.length ? quantile(values, 0.75) : null,
       };
     }),
+  };
+}
+export function consensusComparison(examples: DejaVuExample[]) {
+  // Apply the same complete-interval exclusion before taking each sample size.
+  const ids = new Set(consensus(examples).exampleIds);
+  const eligible = examples.filter((e) => ids.has(e.id)).sort(
+    (a, b) => b.score - a.score || a.id.localeCompare(b.id),
+  ).filter((e, index, rows) => rows.findIndex((row) => row.id === e.id) === index);
+  return {
+    methodVersion: COMPARISON_METHOD,
+    comparisons: ([5, 10, 20] as const).map((requestedCount) => ({
+      requestedCount,
+      ...consensus(eligible.slice(0, requestedCount)),
+      methodVersion: COMPARISON_METHOD,
+      selection: `類似度上位${requestedCount}件（比較窓・結果窓の重複を除外）。未校正の経験分布。`,
+    })),
   };
 }
 const labels = {

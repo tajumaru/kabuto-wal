@@ -24,6 +24,10 @@ export const dejavuResultSchema = z.object({
   query: z.object({ shape: z.array(finite) }),
   examples: z.array(z.object({ id: z.string(), providerCode: z.string(), start: z.string(), end: z.string(), score: finite, shape: z.array(finite), futureShape: z.array(finite), future: z.record(z.string(), nullable) })),
   consensus: dejavuConsensusSchema, dna: dejavuDnaSchema,
+  statistics: z.object({
+    methodVersion: z.string(),
+    comparisons: z.array(dejavuConsensusSchema.extend({ requestedCount: z.number().int().positive() })),
+  }).optional(),
 });
 export const dejavuEvaluationListSchema = z.array(predictionSchema.and(z.object({
   evaluations: z.array(z.object({ actualReturn: finite, returnError: finite, directionMatch: z.boolean(), inRange: z.boolean() })),

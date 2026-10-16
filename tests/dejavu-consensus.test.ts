@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import {
   consensus,
+  consensusComparison,
   dna,
   type DejaVuExample,
 } from "../packages/core/dejavu-consensus";
@@ -74,4 +75,26 @@ it("DNAは距離から変換し総合スコアと区別する", () => {
   expect(d.elements[1].contribution).toBe(0.25);
   expect(d.mostSimilar).toBe("価格形状");
   expect(d.mostDifferent).toBe("変動率");
+});
+
+it("上位5・10・20を独立比較し、v1・不足件数・欠損・同点の順序を維持", () => {
+  for (const count of [0, 1, 5, 25]) {
+    for (const value of [-0.1, 0.1]) {
+      const rows = Array.from({ length: count }, (_, i) => example(i, value));
+      const before = consensus(rows.slice(0, 5));
+      const comparison = consensusComparison(rows);
+      expect(comparison.comparisons.map(c => c.horizons[5].sampleCount)).toEqual([5, 10, 20].map(n => Math.min(n, count)));
+      expect(consensus(rows.slice(0, 5))).toEqual(before);
+      for (const c of comparison.comparisons) expect(c.horizons[5].upRatio).toBe(count ? Number(value > 0) : null);
+      expect(consensusComparison([...rows].reverse())).toEqual(comparison);
+    }
+  }
+  const rows = Array.from({ length: 25 }, (_, i) => example(i, i % 2 ? -0.1 : 0.1));
+  rows[0].future[5] = null;
+  const c = consensusComparison(rows).comparisons[2];
+  expect(c.horizons[5].sampleCount).toBe(19);
+  expect(c.horizons[5].upRatio).toBeGreaterThan(0);
+  expect(c.horizons[5].upRatio).toBeLessThan(1);
+  const overlap = { ...rows[1], providerCode: rows[0].providerCode };
+  expect(consensusComparison([rows[0], overlap, rows[0]]).comparisons[2].exampleIds).toHaveLength(1);
 });

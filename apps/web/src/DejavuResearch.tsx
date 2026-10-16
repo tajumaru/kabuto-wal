@@ -174,6 +174,17 @@ export function DejavuResearch({
         <details>
           <summary>計算根拠と統計</summary>
           <p>{data.consensus.selection}</p>
+          {data.statistics && <div>
+            <h3>事例数による統計の変動（{horizon}営業日後）</h3>
+            <p>上昇割合は過去事例の割合です。校正済み上昇確率ではありません。予測記録は従来の上位5件・v1を使用します。</p>
+            <table><thead><tr><th>上限</th><th>有効件数</th><th>上昇割合</th><th>中央値</th></tr></thead><tbody>
+              {data.statistics.comparisons.map((comparison) => {
+                const stats = comparison.horizons[horizon];
+                return <tr key={comparison.requestedCount}><td>{comparison.requestedCount}件</td><td>{stats.sampleCount}件{stats.sampleCount < comparison.requestedCount ? "（候補不足）" : ""}</td><td>{pct(stats.upRatio)}</td><td>{pct(stats.medianReturn)}</td></tr>;
+              })}
+            </tbody></table>
+            <small>{data.statistics.methodVersion}</small>
+          </div>}
           <p>
             走査候補 {data.candidateCount}件 / 重複除外後 {data.sampleCount}件 /
             表示・集計対象 {data.consensus.exampleIds.length}件
