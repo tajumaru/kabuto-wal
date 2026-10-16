@@ -24,32 +24,35 @@ export async function snapshot(service: Service, code: string, cutoff: string) {
       const bars = (r as { bars: Bar[] }).bars;
       return [createHash("sha256").update(JSON.stringify(bars)).digest("hex"), bars] as const;
     }));
-  const revisions: Bar[] = [];
+  const cutoffMs = Date.parse(cutoff);
+  if (!Number.isFinite(cutoffMs)) throw Error("取得時点が不正です");
+  const chosen = new Map<string, Bar>();
+  const timestamps = new Map<string, number>();
+  let revisionCount = 0;
+  const choose = (bar: Bar, availableAt = bar.availableAt, seriesId = bar.seriesId) => {
+    revisionCount++;
+    const timestamp = Date.parse(availableAt);
+    if (!Number.isFinite(timestamp) || timestamp > cutoffMs) return;
+    const previous = timestamps.get(bar.sessionDate);
+    if (previous === undefined || previous < timestamp) {
+      timestamps.set(bar.sessionDate, timestamp);
+      chosen.set(bar.sessionDate, { ...bar, availableAt, seriesId });
+    }
+  };
   for (const record of records) {
     if (!("kind" in record) || record.kind === "price_revision") {
-      revisions.push(record as Bar);
+      choose(record as Bar);
     } else if (record.kind === "price_observation") {
       const body = bodies.get(record.contentId!);
       if (!body) throw Error("価格取得記録の参照先がありません");
       const entries = new Map(record.entries?.map((entry) => [entry.sessionDate, entry]));
       for (const bar of body) {
         const entry = entries.get(bar.sessionDate);
-        revisions.push({ ...bar, availableAt: entry?.availableAt ?? record.availableAt!, seriesId: entry ? entry.seriesId : record.seriesId });
+        choose(bar, entry?.availableAt ?? record.availableAt!, entry ? entry.seriesId : record.seriesId);
       }
     }
   }
-  const rows = revisions.length ? revisions : await service.history(code);
-  const chosen = new Map<string, Bar>();
-  for (const b of rows) {
-    if (
-      Date.parse(b.availableAt) > Date.parse(cutoff) ||
-      !Number.isFinite(Date.parse(b.availableAt))
-    )
-      continue;
-    const old = chosen.get(b.sessionDate);
-    if (!old || Date.parse(old.availableAt) < Date.parse(b.availableAt))
-      chosen.set(b.sessionDate, b);
-  }
+  if (!revisionCount) for (const bar of await service.history(code)) choose(bar);
   return [...chosen.values()].sort((a, b) =>
     a.sessionDate.localeCompare(b.sessionDate),
   );

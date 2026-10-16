@@ -34,8 +34,8 @@ import "./style.css";
 import { StockPicker } from "./StockPicker";
 import { displayStockCode } from "./stock-search";
 import { Kabumaru } from "./Kabumaru";
-import { DejavuResearch } from "./DejavuResearch";
-import { BottomResearch } from "./BottomResearch";
+const DejavuResearch = lazy(() => import("./DejavuResearch").then(m => ({ default: m.DejavuResearch })));
+const BottomResearch = lazy(() => import("./BottomResearch").then(m => ({ default: m.BottomResearch })));
 import { HomeBrand } from "./HomeBrand";
 import { DailyFetch } from "./DailyFetch";
 import { MemoryContent, memoryKindLabel, memorySyncLabel } from "./MemoryContent";
@@ -250,6 +250,7 @@ function App() {
               <Link to="/settings#owner-wallet">本人確認の設定を開く →</Link>
             </div>
           )}
+          <Suspense fallback={<p role="status">画面を準備中…</p>}>
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/stocks/:code" element={<Stock />} />
@@ -260,6 +261,7 @@ function App() {
             <Route path="/memories" element={<Memories />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
+          </Suspense>
         </div>
       </main>
       <Kabumaru authenticated={!!status && !error} />
