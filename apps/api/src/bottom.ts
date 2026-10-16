@@ -19,10 +19,11 @@ export async function analyzeBottom(
   code: string,
   date?: string,
   now = new Date(),
+  options: { cutoff?: string; series?: Awaited<ReturnType<typeof readDerivedSeries>> | null; calendar?: Calendar } = {},
 ) {
-  const cutoff = date ? `${date}T14:59:59.999Z` : now.toISOString();
+  const cutoff = options.cutoff ?? (date ? `${date}T14:59:59.999Z` : now.toISOString());
   const latest = await service.history(code);
-  const derived = await readDerivedSeries(service.store, code, date, cutoff);
+  const derived = options.series === undefined ? await readDerivedSeries(service.store, code, date, cutoff) : options.series;
   const asOf =
     date ??
     [latest.at(-1)?.sessionDate, derived?.bars.at(-1)?.sessionDate]
@@ -38,7 +39,7 @@ export async function analyzeBottom(
       )
     : [];
   const window = rows.slice(-80);
-  const cal = await service.store.read<Calendar>("market/calendar.json", []);
+  const cal = options.calendar ?? await service.store.read<Calendar>("market/calendar.json", []);
   const reasons: string[] = [],
     risks = ["topix_unknown", "news_earnings_unchecked"];
   const turnover = selectedDerived?.turnover.slice(-20);

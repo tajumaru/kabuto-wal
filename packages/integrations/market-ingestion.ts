@@ -15,7 +15,7 @@ import { barSchema } from "../core/index";
 import type { Calendar } from "../core/index";
 
 type PageRef = { hash: string; observedAt: string; count: number };
-type Checkpoint = {
+export type Checkpoint = {
   date: string;
   revision: string;
   status: "partial" | "completed";
@@ -29,11 +29,13 @@ type Checkpoint = {
 export class MarketIngestion {
   constructor(
     private store: Store,
-    private provider: JQuants,
+    private provider: Pick<JQuants, "master" | "page"> | null,
     private plan: string,
     private now = () => new Date(),
+    private cancelled: () => Promise<boolean> = async () => false,
   ) {}
   async ingestDate(date: string, revision = "initial") {
+    if (!this.provider) throw Error("取得用接続がありません");
     z.string().date().parse(date);
     z.string()
       .regex(/^[A-Za-z0-9_-]{1,64}$/)
@@ -128,6 +130,7 @@ export class MarketIngestion {
         for (const row of body) existingCodes.add(row.Code);
       }
       while (checkpoint.pages.length < 10000) {
+        if (await this.cancelled()) throw Error("取得をキャンセルしました");
         const page = await this.provider.page(
           "equities/bars/daily",
           { date },
@@ -192,7 +195,7 @@ export class MarketIngestion {
       throw error;
     }
   }
-  async series(code: string, asOf: string, cutoff: string, from: string) {
+  async series(code: string, asOf: string, cutoff: string, from: string, indexedObservations?: RawObservation[]) {
     z.string()
       .regex(/^[A-Z0-9]{4,5}$/)
       .parse(code);
@@ -201,8 +204,8 @@ export class MarketIngestion {
       "market/calendar.json",
       [],
     );
-    const observations: RawObservation[] = [];
-    for (const d of calendar.filter(
+    const observations: RawObservation[] = indexedObservations ?? [];
+    for (const d of (indexedObservations ? [] : calendar).filter(
       (d) => d.open && d.date >= from && d.date <= asOf,
     )) {
       const dateBase = `market/ingestion/${d.date}`;
