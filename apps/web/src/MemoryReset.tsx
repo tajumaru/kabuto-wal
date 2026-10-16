@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-type Plan = { id: string; state: string; namespaces: { name: string; memory_count: number; state: string; deleted?: number; error?: string }[] };
+type Plan = { id: string; state: string; recovery?: boolean; namespaces: { name: string; memory_count: number; state: string; deleted?: number; error?: string }[] };
 async function request(action: string, body: unknown): Promise<Plan> {
   const response = await fetch(`/api/memory-reset/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const data = await response.json();
@@ -16,7 +16,7 @@ export function MemoryReset({ authenticated, memoryId }: { authenticated: boolea
     setBusy(true); setError("");
     try {
       const result = await request(execute ? "execute" : "preview", execute ? { planId: plan!.id, confirmation, namespaces: selected } : memoryId ? { memoryId } : {});
-      if (!execute) setSelected(memoryId ? result.namespaces.map(ns => ns.name) : []);
+      if (!execute) setSelected(result.namespaces.filter(ns => ns.state !== "completed" && (memoryId || result.recovery)).map(ns => ns.name));
       setPlan(result); setConfirmation("");
       if (execute) void queryClient.invalidateQueries({ queryKey: ["/memories"] });
     } catch (e) {
@@ -40,7 +40,7 @@ export function MemoryReset({ authenticated, memoryId }: { authenticated: boolea
     <button disabled={!authenticated || busy} onClick={() => void run(false)}>{busy ? "MemWalに確認中…" : "対象を確認"}</button>
     {plan && <>
       <p>保存区分：{plan.namespaces.length}件 · 確認時の検索用データ：{plan.namespaces.reduce((sum, ns) => sum + ns.memory_count, 0)}件</p>
-      {plan.namespaces.length > 0 && <div className="tablewrap"><table><thead><tr><th>選択</th><th>保存区分</th><th>件数</th><th>実行結果</th></tr></thead><tbody>{plan.namespaces.map((ns) => <tr key={ns.name}><td><input type="checkbox" aria-label={`削除する区分 ${ns.name}`} checked={selected.includes(ns.name)} disabled={busy || plan.state !== "prepared"} onChange={e => { setConfirmation(""); setSelected(e.target.checked ? [...selected, ns.name] : selected.filter(name => name !== ns.name)); }} /></td><td style={{ overflowWrap: "anywhere" }}>{ns.name}</td><td>{ns.memory_count}</td><td>{ns.state === "completed" ? `${ns.deleted}件削除・0件を確認` : ns.state === "failed" ? ns.error : "未実行"}</td></tr>)}</tbody></table></div>}
+      {plan.namespaces.length > 0 && <div className="tablewrap"><table><thead><tr><th>選択</th><th>保存区分</th><th>件数</th><th>実行結果</th></tr></thead><tbody>{plan.namespaces.map((ns) => <tr key={ns.name}><td><input type="checkbox" aria-label={`削除する区分 ${ns.name}`} checked={selected.includes(ns.name)} disabled={busy || plan.state !== "prepared" || ns.state === "completed"} onChange={e => { setConfirmation(""); setSelected(e.target.checked ? [...selected, ns.name] : selected.filter(name => name !== ns.name)); }} /></td><td style={{ overflowWrap: "anywhere" }}>{ns.name}</td><td>{ns.memory_count}</td><td>{ns.state === "completed" ? `${ns.deleted === undefined ? "" : `${ns.deleted}件の`}削除確認済み（再実行しません）` : ns.state === "failed" ? ns.error : "未実行"}</td></tr>)}</tbody></table></div>}
       {plan.state === "prepared" && plan.namespaces.length > 0 && <>
         <p>選択中：{selected.length}区分・{plan.namespaces.filter(ns => selected.includes(ns.name)).reduce((sum, ns) => sum + ns.memory_count, 0)}件</p>
         <label>選択した区分の検索索引を削除する場合は「検索リセット」と入力してください。

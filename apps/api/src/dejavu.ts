@@ -7,6 +7,7 @@ import { notice } from "../../../packages/core/assistant";
 import type { Service } from "./service";
 import {
   syncMemories,
+  syncWarning,
   type MemoryProvider,
 } from "../../../packages/integrations/index";
 
@@ -163,9 +164,9 @@ export async function saveDejavu(
     process.env.ALLOW_MARKET_DATA_TO_MEMWAL === "true"
   ) {
     try {
-      await service.store.lock(async () =>
+      error = syncWarning(await service.store.lock(async () =>
         syncMemories(service.store, await service.memoryProvider(), true),
-      );
+      ));
     } catch {
       error = "MemWal接続を確認できません。保存済みJSONから再同期できます。";
     }
@@ -216,6 +217,7 @@ export async function recallDejavu(
   let search = service.mode === "demo" ? "local-demo" : "local-fallback",
     error: string | undefined;
   const entries: unknown[] = await service.store.all("memories");
+  const local = new Map((entries as { recordId: string; active?: boolean; remoteDeletedAt?: string }[]).map(m => [m.recordId, m]));
   if (
     service.mode !== "demo" &&
     process.env.ALLOW_MARKET_DATA_TO_MEMWAL === "true"
@@ -253,6 +255,7 @@ export async function recallDejavu(
     if (!parsed.success) continue;
     const m = parsed.data;
     if (
+      local.get(m.recordId)?.active === false || local.get(m.recordId)?.remoteDeletedAt ||
       (m.namespace !== ns && m.namespace !== legacyNs) ||
       m.mode !== service.mode ||
       m.providerCode !== code ||

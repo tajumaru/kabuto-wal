@@ -6,6 +6,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { Service } from "../apps/api/src/service";
 import { DeleteApiError, registerMemoryDelete } from "../apps/api/src/memory-delete";
+import { memwalBinding } from "../packages/integrations/memwal-config";
 import { syncMemories } from "../packages/integrations/index";
 
 const cleanups: (() => Promise<unknown>)[] = [];
@@ -16,7 +17,7 @@ async function fixture() {
   const service = new Service(root, "live");
   const id = randomUUID(), batchId = randomUUID();
   await service.store.write(`memories/${id}.json`, { recordId: id, kind: "user_memory", text: "長期の方針", active: true, namespace: "kabutowal:v1:profile" });
-  await service.store.write(`sync/${id}.json`, { status: "synced", blobId: "only-this-blob" });
+  await service.store.write(`sync/${id}.json`, { status: "synced", blobId: "only-this-blob", environmentBinding: memwalBinding() });
   const calls: { path: string; method?: string; body: any }[] = [];
   let state = "awaiting_signature", submitTimeout = false, available = true;
   const fetcher = vi.fn(async (url: any, init: any) => {
@@ -37,7 +38,7 @@ async function fixture() {
   });
   const app = Fastify();
   app.setErrorHandler((e, _req, reply) => reply.code(e instanceof DeleteApiError ? e.statusCode : 400).send({ error: (e as Error).message, ...(e instanceof DeleteApiError ? { code: e.code } : {}) }));
-  const verifySearch = vi.fn(async () => ({ state: "absent" as const, namespace: "kabutowal:v1:profile", checkedAt: new Date().toISOString(), limit: 50 }));
+  const verifySearch = vi.fn(async () => ({ state: "not_observed" as const, namespace: "kabutowal:v1:profile", checkedAt: new Date().toISOString(), limit: 50, note: "今回の検索では未検出" }));
   registerMemoryDelete(app, service, fetcher as typeof fetch, verifySearch);
   cleanups.push(async () => { await app.close(); await rm(root, { recursive: true, force: true }); });
   const request = (action: string, body: any = { token: "ephemeral-test-token" }) => app.inject({ method: "POST", url: `/api/memories/${id}/remote-delete/${action}`, payload: body });
@@ -49,7 +50,7 @@ it("削除取引完了後の再検索が失敗したら未確認とし、再送�
   f.verifySearch.mockRejectedValueOnce(Error("recall failed"));
   const submitted = (await f.request("submit", { token: "token", signature: "signature" })).json();
   expect(submitted).toMatchObject({ state: "completed", searchVerification: { state: "pending" } });
-  expect((await f.request("status")).json().searchVerification.state).toBe("absent");
+  expect((await f.request("status")).json().searchVerification.state).toBe("not_observed");
   expect(f.calls.filter((call) => call.path.endsWith("/submit"))).toHaveLength(1);
 });
 it("保存先変更時は外部APIを呼ぶ前に停止する", async () => {
@@ -130,7 +131,7 @@ it("類似相場の64桁の記録IDでも正しいblobを選択する", async ()
   const f = await fixture();
   const id = "a".repeat(64);
   await f.service.store.write(`memories/${id}.json`, { recordId: id, kind: "dejavu_memory", text: "analysis" });
-  await f.service.store.write(`sync/${id}.json`, { status: "synced", blobId: "analysis-blob" });
+  await f.service.store.write(`sync/${id}.json`, { status: "synced", blobId: "analysis-blob", environmentBinding: memwalBinding() });
   const response = await f.app.inject({ method: "POST", url: `/api/memories/${id}/remote-delete/prepare`, payload: { token: "test-token" } });
   expect(response.statusCode).toBe(200);
   expect(f.calls.at(-1)?.body).toEqual({ mode: "selection", blobIds: ["analysis-blob"] });
@@ -152,7 +153,7 @@ it("一覧を全ページ照合し、未登録なら準備APIを呼ばず、形�
   expect(response.json().error).toContain("保存先サーバーや保存時の所有者が異なる場合");
   expect(response.json().error).not.toContain("新形式の記憶を削除できません");
   expect(f.fetcher).toHaveBeenCalledTimes(2);
-  expect(await f.service.store.read(`sync/${f.id}.json`)).toEqual({ status: "synced", blobId: "only-this-blob" });
+  expect(await f.service.store.read(`sync/${f.id}.json`)).toEqual({ status: "synced", blobId: "only-this-blob", environmentBinding: memwalBinding() });
   expect((await f.service.store.read(`memories/${f.id}.json`)).active).toBe(true);
 });
 

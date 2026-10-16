@@ -21,7 +21,13 @@ const kit = createDAppKit({
 });
 export async function disconnectWallet() {
   const response = await fetch("/api/auth/logout", { method: "POST" });
-  if (!response.ok) throw Error("ログアウトできませんでした。もう一度お試しください。");
+  if (!response.ok) {
+    const result = await response.json().catch(() => null);
+    const reason = result?.error === "Origin不一致"
+      ? "画面のURLとサーバーのAPP_ORIGIN設定が一致していません。"
+      : `サーバーがエラーを返しました（HTTP ${response.status}）。`;
+    throw Error(`ログアウトできませんでした。${reason}`);
+  }
   if (kit.stores.$connection.get().wallet) await kit.disconnectWallet();
   window.location.reload();
 }

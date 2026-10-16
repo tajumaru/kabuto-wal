@@ -1,16 +1,20 @@
 import { MemWal } from "@mysten-incubation/memwal";
 import { memwalEnvironment, memwalBinding } from "./memwal-config";
-import { randomUUID } from "node:crypto";
+
 import { isCauseQuestion } from "../core/question";
-import { barSchema, type Bar } from "../core/index";
+import { randomUUID } from "node:crypto";
+import { isPredictionEvidence } from "../core/chat-evidence";
+import type { Bar } from "../core/index";
 import type { Store } from "../storage/index";
+import { normalizeSuiAddress } from "@mysten/sui/utils";
 export interface MarketDataProvider {
   daily(code: string, from: string, to: string): Promise<Bar[]>;
 }
 export interface MemoryProvider {
   environmentBinding?: string;
-  remember(text: string, namespace: string): Promise<{ job_id: string }>;
-  waitForRememberJob(id: string): Promise<{ blob_id: string; namespace?: string }>;
+  remember(text: string, namespace: string, options?: { idempotencyKey: string }): Promise<{ job_id: string }>;
+  getRememberStatus?(id: string): Promise<{ job_id: string; status: string; blob_id?: string; owner?: string; namespace?: string }>;
+  waitForRememberJob(id: string): Promise<{ blob_id: string; namespace?: string; owner?: string }>;
   recall(params: {
     query: string;
     namespace: string;
@@ -50,72 +54,7 @@ export async function requestJson(
   }
   throw Error("レート制限");
 }
-export class JQuants implements MarketDataProvider {
-  constructor(
-    private key: string,
-    private fetcher: typeof fetch = fetch,
-  ) {}
-  async pages(endpoint: string, params: Record<string, string>) {
-    const data: any[] = [];
-    let pagination: string | undefined;
-    const seen = new Set<string>();
-    do {
-      const q = new URLSearchParams({
-        ...params,
-        ...(pagination ? { pagination_key: pagination } : {}),
-      });
-      const result = await requestJson(
-        `https://api.jquants.com/v2/${endpoint}?${q}`,
-        { "x-api-key": this.key },
-        this.fetcher,
-      );
-      if (!Array.isArray(result.data))
-        throw Error("J-Quantsのレスポンス形式が一致しません");
-      data.push(...result.data);
-      pagination = result.pagination_key;
-      if (pagination) {
-        if (seen.has(pagination)) throw Error("ページキーの循環");
-        seen.add(pagination);
-      }
-    } while (pagination);
-    return data;
-  }
-  async daily(code: string, from: string, to: string) {
-    const data = await this.pages("equities/bars/daily", { code, from, to });
-    const availableAt = new Date().toISOString(),
-      seriesId = randomUUID();
-    return data.map((b) =>
-      barSchema.parse({
-        providerCode: b.Code,
-        sessionDate: b.Date,
-        close: b.C,
-        adjClose: b.AdjC,
-        volume: b.AdjVo,
-        factor: b.AdjFactor ?? 1,
-        revisionId: "pending",
-        availableAt,
-        seriesId,
-        open: b.O ?? null,
-        high: b.H ?? null,
-        low: b.L ?? null,
-        rawVolume: b.Vo ?? null,
-        adjOpen: b.AdjO ?? null,
-        adjHigh: b.AdjH ?? null,
-        adjLow: b.AdjL ?? null,
-      }),
-    );
-  }
-  async master() {
-    return this.pages("equities/master", {});
-  }
-  async calendar(from: string, to: string) {
-    const rows = await this.pages("markets/calendar", { from, to });
-    return rows.map((r) => ({
-      date: r.Date,
-      open: ["1", "2"].includes(String(r.HolDiv)),
-    }));
-  }
-}
+export { JQuants } from "./jquants";
 export function memwal(): MemoryProvider | null {
   if (!process.env.MEMWAL_ACCOUNT_ID || !process.env.MEMWAL_DELEGATE_KEY)
     return null;
@@ -132,53 +71,110 @@ export async function syncMemories(
   provider: MemoryProvider | null,
   allowMarket: boolean,
 ) {
-  if (!provider) return;
+  const summary = { connected: !!provider, synced: 0, accepted: 0, failed: 0, uncertain: 0, skipped: 0 };
+  if (!provider) return summary;
   for (const memory of await store.all("memories")) {
     if (!memory.active || (memory.kind !== "user_memory" && !allowMarket))
       continue;
     const key = `sync/${memory.recordId}.json`;
     const state = await store.read(key, { status: "pending" });
-    if (state.environmentBinding && state.environmentBinding !== provider.environmentBinding)
-      throw Error("MemWal保存先が変更されています。既存jobの取得・再送は停止しました。");
-    if (state.status === "synced" || state.status === "uncertain" || state.status === "deleted" || state.remoteDeletion || state.searchResetAt || memory.remoteDeletedAt) continue;
-    if (state.status === "submitting" && !state.jobId) {
-      await store.write(key, {
-        ...state,
-        status: "uncertain",
-        error: "受付直後の中断。自動再送は停止",
-      });
-      continue;
-    }
+    if (state.status === "deleted" || state.remoteDeletion || state.searchResetAt || memory.remoteDeletedAt) { summary.skipped++; continue; }
     try {
+      await verifyMemoryBinding(store, key, state, memory, provider);
+      if (state.status === "synced") { summary.skipped++; continue; }
+      if (state.status === "failed" && state.terminal) { summary.failed++; continue; }
+      // Old uncertain writes have no durable idempotency key. Never guess and replay them.
+      if (["submitting", "uncertain"].includes(state.status) && !state.jobId && !state.idempotencyKey) {
+        await store.write(key, { ...state, status: "uncertain", errorCode: "LEGACY_WRITE_UNCERTAIN", error: "旧送信の受付結果が不明です。自動再送を停止しています。" });
+        summary.uncertain++; continue;
+      }
       let jobId = state.jobId;
       if (!jobId) {
-        await store.write(key, { ...state, status: "submitting", environmentBinding: provider.environmentBinding });
-        const namespace = memory.namespace.replace(/^stock-memory:/, "kabutowal:");
+        const namespace = state.namespace || memory.namespace.replace(/^stock-memory:/, "kabutowal:");
+        const idempotencyKey = state.idempotencyKey || randomUUID();
+        const pendingText = state.pendingText || JSON.stringify({ ...memory, namespace });
+        await store.write(key, { ...state, status: "submitting", namespace, idempotencyKey, pendingText, environmentBinding: provider.environmentBinding });
         const accepted = await provider.remember(
-          JSON.stringify({ ...memory, namespace }),
+          pendingText,
           namespace,
+          { idempotencyKey },
         );
         jobId = accepted.job_id;
-        await store.write(key, { status: "accepted", jobId, environmentBinding: provider.environmentBinding });
+        if (!jobId) throw Error("受付job IDがありません");
+        await store.write(key, { ...(await store.read(key)), status: "accepted", jobId });
+      }
+      if (provider.getRememberStatus) {
+        const job = await provider.getRememberStatus(jobId);
+        if (job.status === "failed" || job.status === "not_found") {
+          const current = await store.read(key);
+          const failed = job.status === "failed";
+          await store.write(key, {
+            ...current,
+            status: failed ? "failed" : "uncertain",
+            blobId: job.blob_id || current.blobId,
+            terminal: failed,
+            errorCode: failed ? "JOB_FAILED" : "JOB_NOT_FOUND",
+            error: !failed ? "受付ジョブを確認できません。新規送信は停止しています。"
+              : job.blob_id ? "保存ジョブは失敗しましたがblob IDが報告されています。原本の状態を確認するまで新規送信を停止します。"
+                : "保存ジョブが失敗しました。確認後に再試行できます。",
+          });
+          if (job.status === "failed") summary.failed++; else summary.uncertain++;
+          continue;
+        }
       }
       const result = await provider.waitForRememberJob(jobId);
       if (!result.blob_id) throw Error("MemWal保存完了のblob IDが未確認");
       await store.write(key, {
+        ...(await store.read(key)),
         status: "synced",
         jobId,
         blobId: result.blob_id,
         namespace: result.namespace || memory.namespace.replace(/^stock-memory:/, "kabutowal:"),
         environmentBinding: provider.environmentBinding,
+        error: undefined, errorCode: undefined, terminal: undefined,
+        pendingText: undefined,
       });
-    } catch {
+      summary.synced++;
+    } catch (e) {
+      const current = await store.read(key, state);
+      const status = (e as { status?: number }).status;
+      const rejected = !current.jobId && [400, 401, 403, 422, 429].includes(status || 0);
+      const bindingError = e instanceof MemoryBindingError;
+      const next = bindingError ? "uncertain" : rejected ? "failed" : current.jobId ? "accepted" : "uncertain";
       await store.write(key, {
-        ...(await store.read(key)),
-        status: (await store.read(key)).jobId ? "accepted" : "uncertain",
-        error:
-          "同期未完了。既知jobを追跡し、受付不明の場合は自動再送しません。",
+        ...current, status: next,
+        errorCode: bindingError ? "ENVIRONMENT_UNVERIFIED" : rejected ? `HTTP_${status}` : current.jobId ? "JOB_PENDING" : "WRITE_UNCERTAIN",
+        error: bindingError ? "保存先を検証できません。owner・namespace・blobと接続設定を確認してください。" : rejected ? `保存リクエストが拒否されました（HTTP ${status}）。設定・制限を確認後、同じ受付キーで再試行します。` : "同期未完了。既知jobを追跡し、受付不明の送信は保存済みの同じ受付キーだけで再試行します。",
       });
+      summary[next]++;
     }
   }
+  return summary;
+}
+export function syncWarning(summary: Awaited<ReturnType<typeof syncMemories>>) {
+  return !summary.connected ? "MemWal未接続。記録はローカルに保存されています。" : summary.failed || summary.uncertain || summary.accepted
+    ? `MemWal同期未完了：失敗 ${summary.failed}件・結果不明 ${summary.uncertain}件・受付中 ${summary.accepted}件。記憶の保存状態を確認してください。` : undefined;
+}
+
+class MemoryBindingError extends Error {}
+// Existing remote receipts must be proven against this authenticated account before adoption.
+export async function verifyMemoryBinding(store: Store, key: string, state: any, memory: any, provider: MemoryProvider) {
+  if (!provider.environmentBinding) return; // Injected local/test providers have no remote environment.
+  if (state.environmentBinding) {
+    if (state.environmentBinding !== provider.environmentBinding) throw new MemoryBindingError();
+    return;
+  }
+  if (!state.jobId && !state.blobId) {
+    if (["submitting", "uncertain"].includes(state.status)) throw new MemoryBindingError();
+    return;
+  }
+  if (!state.jobId || !provider.getRememberStatus || !process.env.OWNER_ADDRESS) throw new MemoryBindingError();
+  const job = await provider.getRememberStatus(state.jobId);
+  if (job.job_id !== state.jobId || !job.owner || normalizeSuiAddress(job.owner) !== normalizeSuiAddress(process.env.OWNER_ADDRESS)
+    || job.namespace !== (state.namespace || memory.namespace) || (state.blobId && (job.status !== "done" || job.blob_id !== state.blobId))) throw new MemoryBindingError();
+  state.environmentBinding = provider.environmentBinding;
+  state.namespace = job.namespace;
+  await store.write(key, state);
 }
 export class LocalLlm implements LlmProvider {
   async answer(
@@ -188,7 +184,7 @@ export class LocalLlm implements LlmProvider {
     const causeQuestion = isCauseQuestion(question);
     const bitcoinQuestion = /ビットコイン|bitcoin|\bBTC\b/i.test(question);
     const priceEvidence = evidence.filter((e) => e.text.startsWith("株価の事実"));
-    const memoryEvidence = evidence.filter((e) => !e.text.startsWith("株価の事実"));
+    const memoryEvidence = evidence.filter((e) => !e.text.startsWith("株価の事実") && !isPredictionEvidence(e.text));
     let answer: string;
     const btcEvidence = evidence.filter((e) => e.recordId.startsWith("btc-"));
     if (causeQuestion) {

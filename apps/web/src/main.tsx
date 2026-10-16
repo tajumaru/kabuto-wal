@@ -32,6 +32,7 @@ import { StockPicker } from "./StockPicker";
 import { displayStockCode } from "./stock-search";
 import { Kabumaru } from "./Kabumaru";
 import { DejavuResearch } from "./DejavuResearch";
+import { BottomResearch } from "./BottomResearch";
 import { HomeBrand } from "./HomeBrand";
 import { DailyFetch } from "./DailyFetch";
 import { MemoryContent, memoryKindLabel, memorySyncLabel } from "./MemoryContent";
@@ -200,6 +201,7 @@ function App() {
             ["/", "ホーム", "◫"],
             ["/chat", "記憶チャット", "◌"],
             ["/similar", "類似相場", "⌁"],
+            ["/bottom", "底打ち研究", "↗"],
             ["/predictions", "予測と検証", "↗"],
             ["/memories", "記憶一覧", "▤"],
             ["/settings", "設定", "⚙"],
@@ -250,6 +252,7 @@ function App() {
             <Route path="/stocks/:code" element={<Stock />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/similar" element={<Similar />} />
+            <Route path="/bottom" element={<BottomResearch request={api} />} />
             <Route path="/predictions" element={<Predictions />} />
             <Route path="/memories" element={<Memories />} />
             <Route path="/settings" element={<Settings />} />
@@ -492,7 +495,7 @@ function Similar() {
   const [code, setCode] = useState(
       new URLSearchParams(location.search).get("code") || "",
     ),
-    [date, setDate] = useState("");
+    [date, setDate] = useState(new URLSearchParams(location.search).get("asOf") || "");
   const { data, error } = useData(
     "/similar?code=" +
       code +
@@ -958,32 +961,34 @@ function Settings() {
         title="研究環境を整える。"
         description="秘密鍵・APIキーはサーバー環境変数で管理します。"
       />
-      <div className="card">
-        <h2>接続状態</h2>
-        <Action onClick={() => api("/connections/memwal", {})} successMessage="MemWalのowner・delegate確認に成功しました。">
-          MemWal owner・delegate確認
-        </Action>
-        {data && (
-          <dl>
+      <section className="card connection-card" aria-labelledby="connection-title">
+        <h2 id="connection-title">接続状態</h2>
+        <p className="connection-intro">各機能の設定状況を確認できます。「設定済み」でも、実際に使えるかの確認は別途必要です。</p>
+        {isPending ? <p role="status">接続状態を確認中…</p> : error ? <p role="alert">接続状態を取得できませんでした。下のウォレット欄で本人確認の状態を確認してください。</p> : data && <>
+          <div className="connection-grid">
             {[
-              ["データ", data.market],
-              ["MemWal", data.memory],
-              ["AI", data.llm],
-              ["Sui", data.sui],
-              [
-                "株価 → MemWal",
-                data.allowMemwal ? "許可設定あり" : "外部送信禁止",
-              ],
-              ["株価 → LLM", data.allowLlm ? "許可設定あり" : "外部送信禁止"],
-            ].map(([k, v]) => (
-              <React.Fragment key={k}>
-                <dt>{k}</dt>
-                <dd>{v}</dd>
-              </React.Fragment>
-            ))}
-          </dl>
-        )}
-      </div>
+              { title: "株価データ", purpose: "銘柄や日足データの取得", status: data.market, help: "実接続が未検証の場合は、銘柄画面でデータを取得して確認してください。" },
+              { title: "記憶の保存・検索（MemWal）", purpose: "記録した内容を保存し、あとで検索", status: data.memory, help: "下のボタンで、記憶の所有者とアプリのアクセス権限を確認します。保存・検索の動作確認は含みません。", action: true },
+              { title: "AIの応答", purpose: "記録や株価をもとに回答", status: data.llm, help: "ローカル応答はアプリ内で作る回答です。外部AIに接続していなくても利用できます。" },
+              { title: "予測の証明（Sui）", purpose: "予測を作成した証拠をブロックチェーンに記録", status: data.sui, help: "ウォレットでの本人確認とは別の機能です。未配備の場合、予測の証明は記録されません。" },
+            ].map((item) => <article className="connection-item" key={item.title}>
+              <h3>{item.title}</h3>
+              <p className="connection-purpose">{item.purpose}</p>
+              <p className="connection-state">{item.status || "状態を取得できません"}</p>
+              <p className="connection-help">{item.help}</p>
+              {item.action && <Action onClick={() => api("/connections/memwal", {})} successMessage="所有者とアプリのアクセス権限を確認しました。保存・検索の動作は未検証です。">MemWalのアクセス権限を確認</Action>}
+            </article>)}
+          </div>
+          <div className="connection-permissions">
+            <h3>株価データの外部送信</h3>
+            <p className="connection-help">送信の許可設定です。接続の成功や、送信済みであることを示すものではありません。</p>
+            <dl>
+              <dt>記憶の保存先（MemWal）へ</dt><dd>{data.allowMemwal ? "送信を許可" : "送信しない"}</dd>
+              <dt>外部AIへ</dt><dd>{data.allowLlm ? "送信を許可" : "送信しない"}</dd>
+            </dl>
+          </div>
+        </>}
+      </section>
       <div className="card wallet-card" id="owner-wallet">
         <div className="wallet-heading">
           <div className="wallet-symbol" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 9h18M16 13h5M7 5V3h10"/><circle cx="16" cy="14.5" r=".75" fill="currentColor" stroke="none"/></svg></div>

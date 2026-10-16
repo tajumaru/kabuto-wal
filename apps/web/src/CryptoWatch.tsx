@@ -2,17 +2,29 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from "recharts";
 import { cryptoAssets } from "../../../packages/integrations/crypto-watch";
+async function requestCryptoWatch(update = false) {
+  let response: Response;
+  try {
+    response = await fetch("/api/crypto/watch", update
+      ? { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
+      : undefined);
+  } catch {
+    throw Error("アプリのサーバーに接続できません。サーバーの起動状態を確認して、もう一度「価格を取得」を押してください。");
+  }
+  const data = await response.json().catch(() => null);
+  if (response.status === 401) throw Error("本人確認の有効期限が切れています。設定画面で本人確認をやり直してください。");
+  if (response.status === 403 && data?.error === "Origin不一致") throw Error("画面のURLとサーバーのAPP_ORIGIN設定が一致していません。");
+  if (!response.ok) throw Error(data?.error || `価格を取得できませんでした（HTTP ${response.status}）。`);
+  if (!data || !Array.isArray(data.assets)) throw Error("価格データを読み取れませんでした。画面を再読み込みしてください。");
+  return data;
+}
 export function CryptoWatch() {
-  const query = useQuery({queryKey:["crypto-watch"],queryFn:async()=>{
-    const r = await fetch("/api/crypto/watch");
-    if (!r.ok) throw Error("仮想通貨の表示には本人確認が必要です。");
-    return r.json();
-  }});
+  const query = useQuery({queryKey:["crypto-watch"],queryFn:()=>requestCryptoWatch()});
   const [busy,setBusy]=useState(false), [error,setError]=useState("");
   const date = (value: string) => new Date(value).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
   return <section className="card crypto-watch">
     <div className="sectionhead"><div><h2>関連する仮想通貨</h2><p className="muted">株の研究に使う参考価格 · 円建て · 24時間の変動</p></div>
-      <button disabled={busy} onClick={async()=>{setBusy(true);setError("");try{const r=await fetch("/api/crypto/watch",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});const data=await r.json();if(!r.ok)throw Error(data.error||"取得に失敗しました");await query.refetch();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}}>{busy?"取得中…":"価格を取得"}</button>
+      <button disabled={busy} onClick={async()=>{setBusy(true);setError("");try{await requestCryptoWatch(true);await query.refetch({throwOnError:true});}catch(e){setError((e as Error).message);}finally{setBusy(false);}}}>{busy?"取得中…":"価格を取得"}</button>
     </div>
     {(error || query.error) && <p role="alert" className="error">{error || query.error?.message}</p>}
     {query.isPending && <p role="status">読み込み中…</p>}

@@ -12,7 +12,7 @@ import {
   CONSENSUS_METHOD,
   HORIZONS,
 } from "../../../packages/core/dejavu-consensus";
-import { syncMemories } from "../../../packages/integrations/index";
+import { syncMemories, syncWarning } from "../../../packages/integrations/index";
 
 export const reflectionNamespace = (mode: string, code: string) =>
   `kabutowal:dejavu:reflection:v1:${mode}:${code}`;
@@ -91,7 +91,7 @@ export async function recallReflections(
     if (!r.success) continue;
     const m = r.data;
     if (
-      local.get(m.recordId)?.active === false ||
+      local.get(m.recordId)?.active === false || local.get(m.recordId)?.remoteDeletedAt ||
       m.namespace !== namespace ||
       m.mode !== service.mode ||
       m.providerCode !== code ||
@@ -285,9 +285,9 @@ export function registerDejavuJournal(app: FastifyInstance, service: Service) {
       process.env.ALLOW_MARKET_DATA_TO_MEMWAL === "true"
     ) {
       try {
-        await service.store.lock(async () =>
+        syncError = syncWarning(await service.store.lock(async () =>
           syncMemories(service.store, await service.memoryProvider(), true),
-        );
+        ));
       } catch {
         syncError = "ローカル保存済み。MemWal同期は次回ジョブで再試行します。";
       }

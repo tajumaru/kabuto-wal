@@ -1,10 +1,12 @@
 import { randomUUID, createHash } from "node:crypto";
+import { predictionEvidence } from "../../../packages/core/chat-evidence";
 import { Store } from "../../../packages/storage/index";
 import { OpenAiLlm } from "../../../packages/integrations/llm";
 import { bitcoin, bitcoinAt } from "../../../packages/integrations/bitcoin";
 import { verifyMemwalAccount } from "../../../packages/integrations/sui";
 import { collectNotices } from "./assistant";
 import { reflectionNamespace } from "./dejavu-journal";
+import { dataWindow } from "../../../packages/integrations/jquants-plan";
 import { demoBars, calendar, master } from "../../../fixtures/demo";
 import {
   evaluate,
@@ -21,6 +23,7 @@ import {
   JQuants,
   memwal,
   syncMemories,
+  syncWarning,
   LocalLlm,
 } from "../../../packages/integrations/index";
 export const meta = (kind: string, source = "local") => ({
@@ -578,7 +581,7 @@ export class Service {
     for (const p of related)
       evidence.push({
         recordId: p.recordId,
-        text: `予測（仮説） ${p.dataAsOf}→${p.targetSessionDate} : ${JSON.stringify({ predictedReturn: p.predictedReturn, sampleCount: p.sampleCount, evaluation: p.evaluations.at(-1) || null })}`,
+        text: `予測（仮説） ${p.dataAsOf}→${p.targetSessionDate}\n${predictionEvidence({ predictedReturn: p.predictedReturn, sampleCount: p.sampleCount, evaluation: p.evaluations.at(-1) })}`,
       });
     if (code) {
       const bars = await this.history(code),
@@ -724,25 +727,18 @@ export class Service {
     try {
       if (this.mode !== "demo") {
         if (!process.env.JQUANTS_API_KEY) throw Error("JQUANTS_API_KEY未設定");
-        const provider = new JQuants(process.env.JQUANTS_API_KEY);
+        const provider = new JQuants(process.env.JQUANTS_API_KEY, fetch, { root: this.store.root });
         const today = new Date().toLocaleDateString("sv-SE", {
           timeZone: "Asia/Tokyo",
         });
         const plan = process.env.JQUANTS_PLAN || "Free";
-        const years = plan === "Free" ? 2 : plan === "Light" ? 5 : 10;
-        const delay = plan === "Free" ? 84 : 0;
-        const end = new Date(Date.now() - delay * 86400000)
-          .toISOString()
-          .slice(0, 10);
-        const from = new Date(Date.now() - 86400000 * 365 * years)
-          .toISOString()
-          .slice(0, 10);
+        const { from, to: end } = dataWindow(plan, today);
         const referenceStarted = performance.now();
         const cache = await this.store.read("market/reference-cache.json", null);
         const cachedCalendar = await this.store.read<Calendar>("market/calendar.json", []);
         const cachedMaster = await this.store.read<any[]>("market/master.json", []);
         if (cache?.today !== today || cache?.plan !== plan || !cachedMaster.length || !cachedCalendar.length) {
-          const ms = await provider.master();
+          const ms = await provider.master(end);
           await this.store.write(
             "market/master.json",
             ms.map((m) => ({
@@ -755,7 +751,7 @@ export class Service {
             "market/calendar.json",
             await provider.calendar(
               from,
-              new Date(Date.now() + 86400000 * 90).toISOString().slice(0, 10),
+              plan === "Free" ? end : new Date(Date.now() + 86400000 * 90).toISOString().slice(0, 10),
             ),
           );
           await this.store.write("market/reference-cache.json", { today, plan });
@@ -819,11 +815,12 @@ export class Service {
             }
           }
       if (syncMemory) try {
-        await syncMemories(
+        const summary = await syncMemories(
           this.store,
           await this.memoryProvider(),
           process.env.ALLOW_MARKET_DATA_TO_MEMWAL === "true",
         );
+        j.steps.push({ step: "memwal", status: syncWarning(summary) ? "incomplete" : "synced", ...summary, error: syncWarning(summary) });
       } catch (e) {
         j.steps.push({
           step: "memwal",

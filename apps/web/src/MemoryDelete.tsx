@@ -63,10 +63,10 @@ function DeleteForm({ memory, stocks, onDone, onClose, config }: Props & { confi
         setMessage("削除取引を送信し、結果を確認中…");
         result = await request(endpoint + "submit", { token, signature: signedTx.signature });
       }
-      if (result.state === "completed" && result.searchVerification?.state !== "absent") {
+      if (result.state === "completed" && result.searchVerification?.state !== "not_observed") {
         setPending(true); setCanCancel(false); setMessage(result.searchVerification?.note || "削除取引は完了しました。検索結果からの消失は未確認です。削除結果を再確認してください。"); onDone({ status: "deleted", remoteDeletion: { batchId: batchId.current, ...result } });
       } else if (result.state === "completed") {
-        setDeleted(true); setMessage("削除取引が完了し、この記憶の再検索結果に対象blobがないことを確認しました。アプリ内の記録は残し、利用停止にしました。"); onDone({ status: "deleted", remoteDeletion: { batchId: batchId.current, ...result } });
+        setDeleted(true); setMessage("削除取引が完了しました。今回の上位50件の検索では対象blobは未検出です。検索索引全体からの消失は未確認です。アプリ内の記録は残し、利用停止にしました。"); onDone({ status: "deleted", remoteDeletion: { batchId: batchId.current, ...result } });
       } else if (["failed", "rolled_back"].includes(result.state)) {
         setPending(false); setMessage("削除は完了しませんでした。対象を確認して再度お試しください。");
       } else {
@@ -134,11 +134,12 @@ function DirectDeleteForm({ memory, stocks, onDone, onClose, config }: Props & {
     {blobDeleted ? <p role="status">Walrusのblob削除済みです。検索索引の状態は下の操作で別に確認してください。</p> : <>
       <label><input type="checkbox" checked={confirmed} disabled={busy} onChange={e => setConfirmed(e.target.checked)} />内容を確認し、このblobを削除します</label>
       {!["awaiting_signature", "executing"].includes(state) && <button disabled={busy || !matches || !confirmed} onClick={() => void run("prepare")}>対象blobと削除取引を確認</button>}
-      {state === "awaiting_signature" && <>
+      {["awaiting_signature", "executing"].includes(state) && plan?.txBytes && <>
         <p style={{ overflowWrap: "anywhere" }}>対象オブジェクト：{plan?.objectId}</p>
         <p>署名期限：{plan?.expiresAt ? new Date(plan.expiresAt).toLocaleString("ja-JP") : "不明"}</p>
-        <button className="delete-danger" disabled={busy || !matches || !confirmed} onClick={() => void run("submit")}>署名してblobを削除</button>
-        <button disabled={busy} onClick={() => void run("cancel")}>署名前の削除を中止</button>
+        {state === "executing" && <p>送信結果が不明な場合は、まず結果を確認してください。再送は保存済みの同じ取引だけを使用します。</p>}
+        <button className="delete-danger" disabled={busy || !matches || !confirmed} onClick={() => void run("submit")}>{state === "executing" ? "同じ削除取引に署名して再送" : "署名してblobを削除"}</button>
+        {state === "awaiting_signature" && <button disabled={busy} onClick={() => void run("cancel")}>署名前の削除を中止</button>}
       </>}
     </>}
     {(plan?.digest || original?.digest) && <button className="delete-primary" disabled={busy} onClick={() => void run("status")}>削除結果を確認</button>}

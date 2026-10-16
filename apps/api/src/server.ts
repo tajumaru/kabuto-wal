@@ -1,6 +1,7 @@
 import { searchDejavu, notifyDejavu, saveDejavu, recallDejavu } from "./dejavu";
 import { registerDejavuJournal } from "./dejavu-journal";
-import { syncMemories } from "../../../packages/integrations/index";
+import { registerBottom } from "./bottom";
+import { syncMemories, syncWarning, verifyMemoryBinding } from "../../../packages/integrations/index";
 import Fastify from "fastify";
 import { DeleteApiError, registerMemoryDelete } from "./memory-delete";
 import { registerMemoryReset } from "./memory-reset";
@@ -87,6 +88,7 @@ export async function createApp(service = new Service()) {
   registerMemoryReset(app, service);
   registerBlobDelete(app, service);
   registerDejavuJournal(app, service);
+  registerBottom(app, service);
   app.get("/api/auth/challenge", async () =>
     service.store.lock(async () => {
       const nonce = randomBytes(32).toString("hex"),
@@ -375,6 +377,7 @@ export async function createApp(service = new Service()) {
       memwalVerified = false;
       const provider = await service.memoryProvider();
       if (!provider) throw Error("MemWal未設定（デモではローカル記憶）");
+      await provider.recall({ query: "MemWal接続確認", namespace: "kabutowal:v1:profile", limit: 1 });
       memwalVerified = true;
       return {
         ok: true,
@@ -401,12 +404,25 @@ export async function createApp(service = new Service()) {
     const count = await service.evaluateDue();
     let syncError: string | undefined;
     if (service.mode !== "demo" && process.env.ALLOW_MARKET_DATA_TO_MEMWAL === "true") {
-      try { await syncMemories(service.store, await service.memoryProvider(), true); }
+      try { syncError = syncWarning(await syncMemories(service.store, await service.memoryProvider(), true)); }
       catch { syncError = "評価は保存済み。MemWalは未接続のため次回ジョブで再同期します。"; }
     }
     return { count, syncError };
   }));
   app.get("/api/memories", async () => service.memories());
+  app.post("/api/memories/:id/sync-retry", async (req) => service.store.lock(async () => {
+    const memoryId = z.union([id, z.string().regex(/^[a-f0-9]{64}$/)]).parse((req.params as any).id);
+    const key = `sync/${memoryId}.json`, memory = await service.store.read(`memories/${memoryId}.json`), state = await service.store.read(key);
+    if (!memory.active || memory.remoteDeletedAt || state.blobId || state.searchResetAt || state.remoteDeletion || state.directWalrusDeletion || state.status !== "failed" || !state.terminal || !state.jobId) throw Error("確定失敗した保存ジョブだけを再試行できます。");
+    if (memory.kind !== "user_memory" && process.env.ALLOW_MARKET_DATA_TO_MEMWAL !== "true") throw Error("外部送信が許可されていません。");
+    const provider = await service.memoryProvider();
+    if (!provider?.getRememberStatus) throw Error("MemWalの接続を確認できません。");
+    await verifyMemoryBinding(service.store, key, state, memory, provider);
+    const job = await provider.getRememberStatus(state.jobId);
+    if (job.job_id !== state.jobId || job.status !== "failed") throw Error("保存ジョブの確定失敗を確認できません。再送を停止しました。");
+    await service.store.write(key, { ...state, status: "pending", previousJobId: state.jobId, jobId: undefined, idempotencyKey: undefined, pendingText: undefined, terminal: undefined, error: undefined, errorCode: undefined });
+    return { status: "pending", note: "次回の同期で保存を再試行します。" };
+  }));
   app.post("/api/memories", async (req) =>
     service.store.lock(async () => {
       const b = z.object({ text: z.string().min(1).max(3000) }).parse(req.body);

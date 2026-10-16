@@ -9,6 +9,7 @@
 | POST watchlist `{code}` / DELETE watchlist/:code | 10銘柄までの監視 |
 | GET stocks/:code/history | JSONの厳密な日足取得 |
 | GET similar?code=&asOf= | 数値類似検索。asOf省略時は最終日足 |
+| GET bottom/analysis?code=&asOf= | 取得済み80営業日の底打ち研究。読取りのみ、確率はnull。詳細はbottom-research.md |
 | GET dejavu/consensus / dejavu/explanation | `code,asOf?,compareCode?`。統計・DNA・定型解説と反省記憶 |
 | POST dejavu/forecast | `{code,asOf?,compareCode?}`。1/5/20営業日の研究仮説を冪等記録 |
 | GET dejavu/evaluations | `code,asOf?,compareCode?`。デジャヴ予測と評価一覧 |

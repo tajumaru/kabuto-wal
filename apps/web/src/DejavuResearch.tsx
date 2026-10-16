@@ -159,10 +159,10 @@ export function DejavuResearch({
           </div>
         </div>
         <div className="dejavu-scenarios">
-          <p>
+          <p className="scenario-bearish">
             弱気側（25分位）<strong>{pct(s.percentileRange?.[0])}</strong>
           </p>
-          <p>
+          <p className="scenario-bullish">
             強気側（75分位）<strong>{pct(s.percentileRange?.[1])}</strong>
           </p>
         </div>

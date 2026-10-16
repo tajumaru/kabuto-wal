@@ -7,6 +7,8 @@ import { verifyTransactionSignature } from "@mysten/sui/verify";
 import { normalizeSuiAddress } from "@mysten/sui/utils";
 import { memwalBinding, memwalEnvironment } from "../../../packages/integrations/memwal-config";
 import type { Service } from "./service";
+import { verifyMainnetChain } from "../../../packages/integrations/sui";
+import { verifyMemoryBinding } from "../../../packages/integrations/index";
 
 const systemId = "0x2134d52768ea07e8c43570ef975eb3e4c27a39fa6396bef985b5abc58d03ddd2";
 const blobType = "0xfdc88f7d7cf30afab2f82e8380d11ee8f70efb90e863d1de8616fae1bb09ea77::blob::Blob";
@@ -34,6 +36,12 @@ export function registerBlobDelete(app: FastifyInstance, service: Service, facto
     if (action === "prepare") {
       if (sync.status === "deleted" || plan && !["cancelled", "failed"].includes(plan.state)) throw Error("削除済み、または前回の処理があります。削除結果を確認してください。");
       if (sync.remoteDeletion && !["failed", "rolled_back"].includes(sync.remoteDeletion.state)) throw Error("旧削除APIの処理結果を先に確認してください。");
+      if (!sync.environmentBinding) {
+        const provider = await service.memoryProvider();
+        if (!provider) throw Error("旧記憶の保存先を検証する接続設定がありません。");
+        await verifyMemoryBinding(service.store, key, sync, memory, provider);
+      }
+      await verifyMainnetChain(client);
       const target = blobDecimal(sync.blobId);
       const matches = [];
       let cursor: string | null | undefined;
@@ -69,10 +77,12 @@ export function registerBlobDelete(app: FastifyInstance, service: Service, facto
     }
     if (action === "submit") {
       const { planId, signature } = z.object({ planId: z.string().uuid(), signature: z.string().min(1).max(16000) }).parse(req.body);
-      if (plan.id !== planId || plan.state !== "awaiting_signature" || plan.expiresAt < Date.now()) throw Error("削除準備の期限切れ、または送信済みです。結果確認・中止を行ってください。");
+      if (plan.id !== planId || !["awaiting_signature", "executing"].includes(plan.state) || (plan.state === "awaiting_signature" && plan.expiresAt < Date.now())) throw Error("削除準備の期限切れ、または送信済みです。結果確認・中止を行ってください。");
       const bytes = Buffer.from(plan.txBytes, "base64");
+      if (await Transaction.from(bytes).getDigest() !== plan.digest) throw Error("保存済み取引の照合に失敗しました。");
       const signer = await verifyTransactionSignature(bytes, signature);
       if (normalizeSuiAddress(signer.toSuiAddress()) !== normalizeSuiAddress(owner)) throw Error("削除署名の所有者が一致しません。");
+      await verifyMainnetChain(client);
       plan = { ...plan, state: "executing" };
       await service.store.write(key, { ...sync, directWalrusDeletion: plan });
       try { await client.executeTransaction({ transaction: bytes, signatures: [signature] }); }

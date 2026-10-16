@@ -105,6 +105,26 @@ it("途中失敗は部分完了として保存し、成功した区分を再送�
   expect((await f.service.store.read("settings/memwal-search-reset.json")).state).toBe("partial");
   expect((await f.execute(plan.id)).statusCode).toBe(400);
   expect(f.remote.forget).toHaveBeenCalledTimes(2);
+  // A fresh preview reconciles the prior receipt; only unfinished scopes are resumed.
+  f.remote.namespaces.mockResolvedValue([{ name: "other-app", memory_count: 3 }]);
+  const resumed = (await f.preview()).json();
+  expect(resumed).toMatchObject({ recovery: true, state: "prepared" });
+  expect(resumed.id).not.toBe(plan.id);
+  expect((await f.execute(plan.id)).statusCode).toBe(400);
+  expect(resumed.namespaces.map((ns: any) => ns.state)).toEqual(["completed", "pending"]);
+  const response = await f.app.inject({ method: "POST", url: "/api/memory-reset/execute", payload: { planId: resumed.id, confirmation: "検索リセット", namespaces: ["other-app"] } });
+  expect(response.json().state).toBe("completed");
+  expect(f.remote.forget.mock.calls.map(([ns]) => ns)).toEqual(["kabutowal:v1:profile", "other-app", "other-app"]);
+});
+it("リセット受付後の応答喪失は0件を確認して復旧し、再削除しない", async () => {
+  const f = await fixture(), plan = (await f.preview()).json();
+  f.remote.forget.mockRejectedValueOnce(Error("response lost"));
+  expect((await f.execute(plan.id)).json().state).toBe("partial");
+  f.remote.namespaces.mockResolvedValue([]);
+  const reconciled = (await f.preview()).json();
+  expect(reconciled.state).toBe("completed");
+  expect(f.remote.forget).toHaveBeenCalledTimes(1);
+  expect((await f.service.store.read("sync/existing.json")).searchResetAt).toBeTruthy();
 });
 
 it("記憶から開いた確認では実際の保存区分だけを返し、他区分への改変を拒否する", async () => {

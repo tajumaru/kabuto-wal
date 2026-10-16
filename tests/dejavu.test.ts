@@ -158,6 +158,10 @@ it("過去改訂選択・保存重複防止・デモ隔離・MemWalの構造化�
     expect(provider.recall).toHaveBeenCalledWith(
       expect.objectContaining({ namespace: live.namespace }),
     );
+    await service.store.write(`memories/${live.recordId}.json`, { ...live, active: false });
+    expect((await recallDejavu(service, "72030", "2099-01-01", provider)).memories).toHaveLength(0);
+    await service.store.write(`memories/${live.recordId}.json`, { ...live, active: true, remoteDeletedAt: new Date().toISOString() });
+    expect((await recallDejavu(service, "72030", "2099-01-01", provider)).memories).toHaveLength(0);
     provider.recall.mockRejectedValueOnce(Error("offline"));
     expect(
       (await recallDejavu(service, "72030", "2099-01-01", provider)).search,

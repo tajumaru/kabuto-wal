@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
 
+export function assertRpcUrl(value: string) {
+  const url = new URL(value);
+  if (url.protocol !== "https:" || url.username || url.password || url.hash || /testnet|staging/i.test(url.hostname))
+    throw Error("MemWalのSui接続先には認証情報を含まないMainnetのHTTPS URLを指定してください。");
+  return url.href;
+}
+
 // KABUTO WAL runs on Mainnet. Read the environment at call time (after dotenv).
 export function memwalEnvironment() {
   const network = process.env.MEMWAL_NETWORK || "mainnet";
@@ -9,6 +16,7 @@ export function memwalEnvironment() {
     throw Error("KABUTO WALのMemWal接続はMainnetに統一してください。既存データの移行は実行しません。");
   if (server.protocol !== "https:" || server.username || server.password || server.pathname !== "/" || server.search || server.hash)
     throw Error("MEMWAL_SERVER_URLには認証情報やパスを含まないHTTPS URLを指定してください。");
+  assertRpcUrl(endpoint);
   return { network: "mainnet" as const, serverUrl: server.origin, endpoint,
     accountId: process.env.MEMWAL_ACCOUNT_ID, owner: process.env.OWNER_ADDRESS,
     packageId: process.env.MEMWAL_PACKAGE_ID };

@@ -24,7 +24,7 @@ const poseNames = {
   warning: "注意",
 };
 const asset = (pose: KabumaruPose) =>
-  `/characters/kabumaru/kabumaru_${pose}${pose === "discover" ? "_clean" : ""}.png`;
+  `/characters/kabumaru/kabumaru_${pose}${pose === "discover" ? "_clean" : ""}.png?v=20261016-trim`;
 export function KabumaruPortrait({ pose }: { pose: KabumaruPose }) {
   return <img className="dejavu-kabumaru" src={asset(pose)} alt={`カブまる：${poseNames[pose]}`} />;
 }

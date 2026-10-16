@@ -4,7 +4,7 @@
 
 ## 画像
 
-提供元 `public/characters/kabumaru/` の6枚を `apps/web/public/characters/kabumaru/` にコピー。全ファイルのSHA-256一致を確認。512×512のRGBA PNGで、すべて透過領域があります。余白・ポーズの形状が異なるため画像をトリミング・再生成せず、object-fit:containと一定の表示枠で合わせています。CSSのみで6状態の軽いアニメーションを設定。prefers-reduced-motionでは停止し、アシスタントはprefers-color-schemeのダークモードに対応します。アプリ全体のテーマ切替は追加していません。
+提供元 `public/characters/kabumaru/` の6枚を `apps/web/public/characters/kabumaru/` にコピー。基本6枚は512×512のRGBA PNGで、すべて透過領域があります。2026-10-16に6状態を点検し、idle以外の5枚にある端の不要な断片を透過処理しました。提供元と配信用の両方に反映し、キャンバスサイズ・キャラクター本体・表情記号を維持しています。discoverの表示には既存の高解像度clean版を使用します。object-fit:containと一定の表示枠で合わせています。CSSのみで6状態の軽いアニメーションを設定。prefers-reduced-motionでは停止し、アシスタントはprefers-color-schemeのダークモードに対応します。アプリ全体のテーマ切替は追加していません。
 
 ## 通知
 
@@ -39,7 +39,7 @@ MemWal未接続時はローカル根拠応答と表示。外部LLM未接続/外�
 - `apps/web/src/Kabumaru.tsx`：フローティングUI、通知、チャット、状態切替、明示保存。
 - `apps/web/src/main.tsx`：全画面への組み込み。
 - `apps/web/src/style.css`：6状態のCSSアニメーション、スマホ、ダークモード、動き軽減。
-- `apps/web/public/characters/kabumaru/kabumaru_*.png`：提供されたPNG6枚の同一コピー。
+- `apps/web/public/characters/kabumaru/kabumaru_*.png`：提供されたPNG6枚（端の不要な断片を除去）と既存のdiscover_clean版。
 - `packages/core/assistant.ts`：通知型、数値検出、重複を防ぐ通知ID。
 - `apps/api/src/assistant.ts`：通知収集・永続化、類似結果の記憶化。
 - `apps/api/src/server.ts`：本人保護付きAPI、監視変更と類似検索への接続。

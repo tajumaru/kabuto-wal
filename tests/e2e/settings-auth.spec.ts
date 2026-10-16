@@ -1,5 +1,17 @@
 import { test, expect } from "@playwright/test";
 
+test("ログアウトのOrigin不一致を具体的に表示する", async ({ page }) => {
+  await page.route("**/api/status", (route) => route.fulfill({ json: { mode: "live" } }));
+  await page.route("**/api/auth/logout", (route) => route.fulfill({
+    status: 403, json: { error: "Origin不一致" },
+  }));
+  await page.goto("/settings");
+  const panel = page.locator("#owner-wallet");
+  await panel.getByRole("button", { name: "ウォレット接続解除" }).click();
+  await expect(panel.getByText("画面のURLとサーバーのAPP_ORIGIN設定が一致していません。", { exact: false })).toBeVisible();
+  await expect(panel.getByText("本人確認済み", { exact: true })).toBeVisible();
+});
+
 test("本人確認済みでは認証の案内と開始ボタンを表示しない", async ({ page }) => {
   let expired = false;
   await page.route("**/api/status", (route) => route.fulfill(expired

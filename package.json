@@ -7,6 +7,7 @@
     "dev": "tsx watch apps/api/src/dev.ts",
     "start": "tsx apps/api/src/main.ts",
     "job": "tsx apps/api/src/job.ts",
+    "job:market": "tsx scripts/market-ingest.ts",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

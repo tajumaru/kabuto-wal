@@ -1,7 +1,8 @@
 type Evidence = { recordId: string; text: string };
 import { isCauseQuestion } from "../../../packages/core/question";
+import { isPredictionEvidence, readablePredictionEvidence } from "../../../packages/core/chat-evidence";
 export function readableEvidence(text: string) {
-  return text.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g, (value) =>
+  return readablePredictionEvidence(text).replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g, (value) =>
     new Date(value).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) + " JST",
   ).replace(/([\d,]+\.\d+)円/g, (_, price: string) => Math.round(Number(price.replaceAll(",", ""))).toLocaleString("ja-JP") + "円");
 }
@@ -12,6 +13,11 @@ export function ChatAnswer({ event }: { event: { question?: string; answer: stri
   const formattedPrice = price && readableEvidence(price.text).match(/：(.+?円)。観測時刻 (.+?)。/);
   let answer = event.answer;
   if (event.model === "local-grounded") {
+    if (/心配|方針|以前|前に|過去の自分/.test(event.question || "") &&
+      !event.evidence.some((r) => !isPredictionEvidence(r.text) && !r.text.startsWith("株価の事実")) &&
+      answer.startsWith("関連する記録が見つかりました。")) {
+      answer = "当時の心配事や方針を書いた記録は見つかりませんでした。\n保存されている予測や株価だけでは、何を心配していたかは分かりません。参照資料では予測と実績を確認できます。";
+    }
     for (const r of event.evidence.filter((r) => r.recordId.startsWith("btc-"))) {
       if ((r === comparison && values) || (r === price && formattedPrice)) answer = answer.replace(r.text, "");
     }
@@ -35,7 +41,7 @@ export function ChatAnswer({ event }: { event: { question?: string; answer: stri
     <small>{event.model === "local-grounded" ? "ローカル応答" : event.model} · {event.search === "memwal-semantic" ? "MemWalで記憶検索" : "ローカル記録を参照"} {event.error}</small>
     {event.evidence.some((r) => r.recordId.startsWith("btc-")) && <p><a href="https://www.coingecko.com/en/coins/bitcoin" target="_blank" rel="noreferrer">価格データ：CoinGecko</a></p>}
     <details><summary>参照資料・取得時刻を見る（{event.evidence.length}件）</summary>
-      {event.evidence.map((r) => <div className="reference" key={r.recordId}><p>{readableEvidence(r.text)}</p><details><summary>記録ID</summary><small style={{overflowWrap:"anywhere"}}>{r.recordId}</small></details></div>)}
+      {event.evidence.map((r, index) => <div className="reference" key={`${r.recordId}-${index}`}><p style={{whiteSpace:"pre-line"}}>{readableEvidence(r.text)}</p><details><summary>記録ID</summary><small style={{overflowWrap:"anywhere"}}>{r.recordId}</small></details></div>)}
     </details>
   </>;
 }

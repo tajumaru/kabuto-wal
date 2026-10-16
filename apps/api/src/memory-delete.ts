@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import type { Service } from "./service";
 import { memwalBinding, memwalEnvironment } from "../../../packages/integrations/memwal-config";
 import type { MemoryProvider } from "../../../packages/integrations/index";
+import { verifyMemoryBinding } from "../../../packages/integrations/index";
 
 export async function verifyDeletedMemory(provider: MemoryProvider | null, memory: { text: string; namespace: string }, blobId: string) {
   if (!provider) throw Error("MemWal再検索の接続設定がありません。");
@@ -10,7 +11,7 @@ export async function verifyDeletedMemory(provider: MemoryProvider | null, memor
   const result = await provider.recall({ query: memory.text, namespace, limit: 50 });
   if (!Array.isArray(result.results) || result.results.some((hit) => !hit.blob_id || hit.blob_id === blobId))
     throw Error("削除対象が検索に残っているか、blob IDを照合できません。");
-  return { state: "absent" as const, namespace, checkedAt: new Date().toISOString(), limit: 50 };
+  return { state: "not_observed" as const, namespace, checkedAt: new Date().toISOString(), limit: 50, note: "今回の上位50件では対象blobを検出しませんでした。検索索引全体からの消失を保証する確認ではありません。" };
 }
 
 const exclusionMessages: Record<string, string> = {
@@ -118,6 +119,11 @@ export function registerMemoryDelete(app: FastifyInstance, service: Service, fet
     const { token, signature } = z.object({ token: tokenSchema, signature: z.string().max(16000).optional() }).parse(req.body);
     const previous = sync.remoteDeletion;
     if (action === "prepare") {
+      if (!sync.environmentBinding) {
+        const provider = await service.memoryProvider();
+        if (!provider) throw Error("旧記憶の保存先を検証する接続設定がありません。");
+        await verifyMemoryBinding(service.store, syncKey, sync, memory, provider);
+      }
       if (sync.status === "deleted") throw Error("この記憶はMemWalから削除済みです。");
       if (previous && !["failed", "rolled_back"].includes(previous.state)) throw Error("前回の削除結果を確認してください。重複送信を停止しました。");
       const state = await trackedState(sync.blobId, token);

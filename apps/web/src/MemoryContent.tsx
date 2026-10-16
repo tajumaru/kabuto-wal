@@ -1,4 +1,24 @@
 import { displayStockCode } from "./stock-search";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+
+function RetryMemorySync({ memory }: { memory: any }) {
+  const [busy, setBusy] = useState(false), [scheduled, setScheduled] = useState(false), [message, setMessage] = useState("");
+  const client = useQueryClient();
+  async function retry() {
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/memories/${memory.recordId}/sync-retry`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error || "再試行を準備できませんでした。");
+      setMessage(result.note);
+      setScheduled(true);
+      await client.invalidateQueries({ queryKey: ["/memories"] });
+    } catch (error) { setMessage((error as Error).message); }
+    finally { setBusy(false); }
+  }
+  return <div><button disabled={busy || scheduled} onClick={() => void retry()}>失敗した保存を次回同期で再試行</button><p role="status">{message}</p></div>;
+}
 
 export const memoryKindLabel = (kind: string) => ({
   dejavu_memory: "似た値動きの分析", dejavu_reflection: "デジャヴの反省ノート", user_memory: "方針・メモ",
@@ -78,7 +98,10 @@ export function MemoryContent({ memory, stocks }: { memory: any; stocks: any[] }
         ? "このアプリには保存済みです。MemWalは受付済みですが、保存完了はまだ確認できていません。"
         : "このアプリには保存済みです。MemWalへの保存完了は確認できていません。"}</p>
     <details className="memory-details"><summary>保存データの詳細</summary>
+      {memory.sync?.error && <p role="status">{memory.sync.error}</p>}
+      {memory.active && !memory.remoteDeletedAt && !memory.sync?.blobId && !memory.sync?.searchResetAt && memory.sync?.status === "failed" && memory.sync?.terminal && <RetryMemorySync memory={memory} />}
       {memory.sync?.searchResetAt && <p>MemWal検索リセットの対象です。原本は残り、このアプリからの自動再送は停止しています。</p>}
+      {memory.sync?.searchResetState && memory.sync.searchResetState !== "completed" && <p>検索リセットの完了は未確認です。同じ対象の「対象を確認」から現在の件数を確認して再開できます。</p>}
       <p className="muted">記録ID：{memory.recordId}</p>
       {memory.sync?.blobId && <p style={{overflowWrap:"anywhere"}}>MemWal blob ID：{memory.sync.blobId}</p>}
       {memory.sync?.jobId && <p style={{overflowWrap:"anywhere"}}>MemWal受付ジョブID：{memory.sync.jobId}</p>}

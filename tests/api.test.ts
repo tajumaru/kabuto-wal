@@ -21,6 +21,7 @@ afterAll(async () => {
   delete process.env.SESSION_SECRET;
 });
 it("実データAPIとexportを未認証では拒否", async () => {
+  expect((await app.inject("/api/bottom/analysis?code=72030")).statusCode).toBe(401);
   expect((await app.inject("/api/assistant")).statusCode).toBe(401);
   expect(
     (
