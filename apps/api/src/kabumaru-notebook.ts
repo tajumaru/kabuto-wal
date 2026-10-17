@@ -14,7 +14,7 @@ export function notebookIdentity(note:NotebookOriginal){const {notebookId,...bod
 export async function readNotebook(service:Service,id:string){
   const note=notebookOriginalSchema.parse(await service.store.read(`${notebookBase(id)}/original.json`));
   if(note.notebookId!==id||notebookIdentity(note)!==id||note.mode!==(service.mode==="demo"?"demo":"research"))throw Error("研究ノートの識別情報不一致");
-  const rows=await cohortObservations(service,note.cohortIds,note.createdAt),report=comparativeCohortReport(rows.filter(r=>notebookPattern(note.theme,r)),note.cohortIds,new Date(note.report.generatedAt));
+  const rows=await cohortObservations(service,note.cohortIds,note.createdAt),report=comparativeCohortReport(rows.filter(r=>notebookPattern(note.theme,r)),note.cohortIds,new Date(note.report.generatedAt),note.report.comparisonMethod??"pooled-v1");
   if(JSON.stringify(report)!==JSON.stringify(note.report))throw Error("研究ノートとコホート・評価原本が一致しません");
   for(const e of note.evidence){const {evidenceId,...body}=e;if(notebookEvidenceId(body)!==evidenceId||e.reportId!==report.reportId||!report.groups.some(g=>g.key===e.groupKey&&g.candidate.evaluated+g.control.evaluated===e.sampleCount))throw Error("研究Evidence不一致");}
   return note;

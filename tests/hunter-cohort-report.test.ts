@@ -22,3 +22,11 @@ it("十分な銘柄・時点がある場合だけ探索的な二軸区間を決�
   const rows:CohortObservation[]=[];for(let d=0;d<10;d++)for(let c=0;c<40;c++)rows.push(observation(c<20,String(10000+c),new Date(Date.UTC(2026,0,5+d*7)).toISOString().slice(0,10)));
   const a=comparativeCohortReport(rows,[]),b=comparativeCohortReport(rows,[]);expect(a.groups[0].interval).not.toBeNull();expect(a.groups[0].interval).toEqual(b.groups[0].interval);expect(a.groups[0].interval![1]).toBeLessThan(0);
 });
+it("時点ごとの銘柄数の偏りで差が逆転しても、同時点比較を主指標にする",()=>{
+  const rows:CohortObservation[]=[];
+  const add=(candidate:boolean,code:string,date:string,value:number)=>{const r=observation(candidate,code,date);r.evaluation={...r.evaluation!,actualReturn:value,targetPrice:100*(1+value),up:value>0,maxDrawdown:Math.min(value,0),maxRise:Math.max(value,0)};rows.push(r);};
+  for(let i=0;i<100;i++){add(true,String(20000+i),"2026-08-10",0.1);add(false,String(30000+i),"2026-09-07",-0.1);}
+  add(false,"50000","2026-08-10",0.2);add(true,"40000","2026-09-07",-0.2);
+  const report=comparativeCohortReport(rows,[]);expect(report.comparisonMethod).toBe("paired-v2");expect(report.groups[0].difference).toBeCloseTo(-0.1);expect(report.groups[0].pooledDifference).toBeGreaterThan(0);
+  const old=comparativeCohortReport(rows,[],new Date(),"pooled-v1");expect(old.comparisonMethod).toBeUndefined();expect(old.groups[0].difference).toBeGreaterThan(0);
+});

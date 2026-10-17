@@ -78,6 +78,11 @@ it("暗号化バックアップで原本・salt・同期状態と索引を復元
   await target.write("research/results/research.json",{researchId:"conflict"});
   await expect(target.import(payload,"long-passphrase-test")).rejects.toThrow("競合");
 });
+it("暗号化バックアップでも固定コホート・評価原本の競合を上書きしない",async()=>{
+  const key=`market/hunter/cohorts/${"a".repeat(64)}/manifest.json`;
+  await store.write(key,{immutable:"first"},true);const payload=await store.export("cohort-backup-passphrase"),target=new Store(path.join(root,"restored-cohort"));
+  await target.write(key,{immutable:"different"},true);await expect(target.import(payload,"cohort-backup-passphrase")).rejects.toThrow("競合");expect(await target.read(key)).toEqual({immutable:"different"});
+});
 
 it.runIf(process.platform === "win32")("一時的なrename競合を再試行し、恒久失敗でも旧JSONを削除しない", async () => {
   await store.write("settings/retry.json", { value: 1 });

@@ -14,7 +14,7 @@ export function notebookEvidenceId(body:{groupKey:string;sampleCount:number;repo
 export function notebookInsights(note:NotebookOriginal){
   const statements=note.report.groups.map(g=>{
     const e=note.evidence.find(e=>e.groupKey===g.key);if(!e)throw Error("研究ノートの根拠がありません");
-    const enough=g.candidate.evaluated>0&&g.control.evaluated>0;
+    const enough=g.candidate.evaluated>0&&g.control.evaluated>0&&g.difference!==null;
     const text=enough?`${g.mode}・${g.experiment}・${g.horizon}営業日：候補${g.candidate.evaluated}件、非候補${g.control.evaluated}件の平均差は${(g.difference!*100).toFixed(2)}ポイントだよ。${g.lowSample?"少数標本のため、まだ一般化はできないね。":"観測された関連性で、原因や選別能力を証明した結果ではないよ。"}`:`${g.mode}・${g.experiment}・${g.horizon}営業日：候補${g.candidate.evaluated}件、非候補${g.control.evaluated}件。比較データが不足しているため、まだ判断できません。`;
     return {text,evidenceIds:[e.evidenceId],sampleCount:e.sampleCount};
   });

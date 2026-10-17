@@ -53,6 +53,8 @@ test("狭い画面のページングとURL復元、初期集計抑止、エラ�
   await page.goto("/bottom/hunter?asOf=2026-10-09&pageSize=1");
   await expect(page.getByRole("heading", { name: "ランキングを更新する" })).toBeVisible();
   await page.getByRole("button", { name: "保存済みデータを分析して反映", exact: true }).click();
+  // Cached rankings can be visible before the new job response selects its jobId.
+  await expect(page).toHaveURL(/jobId=/);
   await expect(page.getByRole("heading", { name: "底打ちハンター", exact: true })).toBeVisible();
   await expect(page.locator(".hunter-mobile > article")).toHaveCount(1);
   expect(summaries).toBe(0);

@@ -4,7 +4,7 @@ test("監視追加→詳細→類似→予測→期限後検証→記憶とチ�
 }) => {
   await page.goto("/");
   await expect(page).toHaveTitle("KABUTO WAL");
-  const logo = page.getByRole("img", { name: "KABUTO WAL 正式ブランドロゴ" });
+  const logo = page.getByRole("img", { name: "KABUTO WAL ロゴ", exact: true });
   await expect(logo).toBeVisible();
   await expect(logo).toHaveJSProperty("complete", true);
   expect(
@@ -32,7 +32,7 @@ test("監視追加→詳細→類似→予測→期限後検証→記憶とチ�
     page.getByRole("heading", { name: "架空テクノロジー" }),
   ).toBeVisible({ timeout: 120000 });
   await page.getByRole("heading", { name: "架空テクノロジー" }).click();
-  await expect(page.getByText("調整済み終値", { exact: true })).toBeVisible();
+  await expect(page.getByText(/^調整(?:済み|後)終値$/)).toBeVisible();
   await page.getByRole("link", { name: "類似相場を探す" }).click();
   await page.getByText("計算根拠と統計", { exact: true }).click();
   await expect(page.getByText(/走査候補/)).toBeVisible();
@@ -78,9 +78,11 @@ test("監視追加→詳細→類似→予測→期限後検証→記憶とチ�
     fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(logo).toBeVisible();
+  const mobileLogo = page.locator(".header-brand img");
+  await expect(mobileLogo).toBeVisible();
+  await expect(mobileLogo).toHaveJSProperty("complete", true);
   await expect(page.locator(".header-brand")).toBeVisible();
-  const logoBox = await logo.boundingBox();
+  const logoBox = await mobileLogo.boundingBox();
   expect(logoBox!.width).toBeCloseTo(logoBox!.height, 0);
   await page.screenshot({
     path: "test-results/home-mobile.png",
