@@ -31,7 +31,7 @@ export async function runLabExperiment(s:Service,id:string,maxUnits=Infinity){
     const key=`${labBase}/runs/${id}/parts/${cohortId}.json`,old=await s.store.read(key,null);if(old){const parsed=labPartSchema.parse(old),{contentHash,...body}=parsed;if(hash(body)!==contentHash||parsed.inputHash!==j.inputHash)throw Error("checkpoint内容不一致");return;}
     const rows=members.map(original=>{const result=rescoreLabMember(original,m);return {original,...result,...(original.configHash!==hash(BOTTOM_CONFIG)?{status:"excluded" as const,reason:"baseline-config-unavailable",score:null,candidate:false}:{})};});
     const evaluations=(await cohortEvaluations(s,cohortId,p.evaluationCutoff)).filter(e=>p.evaluationIds.includes(e.evaluationId));
-    const body={cohortId,inputHash:j.inputHash,members:rows,evaluations};await s.store.lock(async()=>{if(!await s.store.read(key,null))await s.store.write(key,{...body,contentHash:hash(body)},true);});
+    const normalized=labPartSchema.parse({cohortId,inputHash:j.inputHash,members:rows,evaluations,contentHash:"0".repeat(64)}),{contentHash:placeholder,...body}=normalized;void placeholder;normalized.contentHash=hash(body);await s.store.lock(async()=>{if(!await s.store.read(key,null))await s.store.write(key,normalized,true);});
   },maxUnits);
 }
 export async function controlLabRun(s:Service,id:string,action:"pause"|"cancel"|"resume"){await readLabRun(s,id);return controlResearchJob(s,labRunKey(id),action);}

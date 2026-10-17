@@ -30,7 +30,8 @@ export async function createLabPlan(s:Service,raw:unknown,now=new Date()){
   // Previously displayed notebook outcomes are not a pristine holdout.
   const notes=await s.store.files("research/notebooks");
   for(const file of notes.filter(f=>f.endsWith("/original.json"))){const n=await s.store.read<{mode:string;period:{from:string;to:string};evidence:{sampleCount:number}[]}>(file);if(n.mode===mode&&n.period.from<=q.test.to&&n.period.to>=q.test.from&&n.evidence.some(e=>e.sampleCount>0))throw Error("既存研究ノートで評価済みの期間を未使用Testに指定できません");}
-  const body={...q,cohortIds:ids,mode,createdAt:now.toISOString(),evaluationCutoff:now.toISOString(),cohortHashes,calendarHash:hash(calendar),partitions,purgeReasons,evaluationIds:[...new Set(evaluationIds)].sort(),methodVersion:"temporal-lab-v1" as const},plan=labPlanSchema.parse({...body,planId:hash(body)});
+  const body={...q,cohortIds:ids,mode,createdAt:now.toISOString(),evaluationCutoff:now.toISOString(),cohortHashes,calendarHash:hash(calendar),partitions,purgeReasons,evaluationIds:[...new Set(evaluationIds)].sort(),methodVersion:"temporal-lab-v1" as const},plan=labPlanSchema.parse({...body,planId:"0".repeat(64)});
+  const {planId:placeholder,...normalized}=plan;void placeholder;plan.planId=hash(normalized);
   return s.store.lock(async()=>{for(const raw of await s.store.all(`${labBase}/exposures`)){const e=exposureSchema.parse(raw);if(e.mode===mode&&e.from<=q.test.to&&e.to>=q.test.from)throw Error("開封済みTest期間は別計画の未使用Testに再利用できません");}await s.store.write(`${labBase}/plans/${plan.planId}/original.json`,plan,true);return plan;});
 }
 export async function verifyLabPlanInputs(s:Service,id:string){const p=await readLabPlan(s,id);for(const c of p.cohortIds)if(hash((await readCohort(s,c)).manifest)!==p.cohortHashes[c])throw Error("固定入力の変更を検出しました");return p;}
