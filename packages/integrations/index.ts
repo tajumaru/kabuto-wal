@@ -77,8 +77,8 @@ export async function syncMemories(
   if (!provider) return summary;
   for (const memory of await store.all("memories")) {
     if (onlyIds && !onlyIds.includes(memory.recordId)) continue;
-    if (memory.kind === "notebook_research_summary" && memory.externalConsent !== true) { summary.skipped++; continue; }
-    if (["hunter_reflection", "hunter_research_summary", "notebook_research_summary"].includes(memory.kind) &&
+    if (["notebook_research_summary","lab_experiment_summary"].includes(memory.kind) && memory.externalConsent !== true) { summary.skipped++; continue; }
+    if (["hunter_reflection", "hunter_research_summary", "notebook_research_summary","lab_experiment_summary"].includes(memory.kind) &&
       (process.env.ALLOW_MARKET_DATA_TO_MEMWAL !== "true" || process.env.JQUANTS_MEMWAL_RIGHTS_CONFIRMED !== "true")) {
       summary.skipped++; continue;
     }
@@ -100,7 +100,7 @@ export async function syncMemories(
       if (!jobId) {
         const namespace = state.namespace || memory.namespace.replace(/^stock-memory:/, "kabutowal:");
         const idempotencyKey = state.idempotencyKey || randomUUID();
-        const projection=memory.kind==="notebook_research_summary"?Object.fromEntries(["recordId","notebookId","theme","conditionCodes","period","cohortIds","outcomes","evidenceIds","methodVersion","warnings","displayedSuccessExamples","displayedFailureExamples"].map(key=>[key,memory[key]])):projectDejavuMemory({...memory,namespace});
+        const projection=memory.kind==="lab_experiment_summary"?Object.fromEntries(["recordId","runId","experimentId","methodVersion","parameters","candidateThreshold","hypothesis","period","stage","comparisons","evidenceId","reportId","adoptionStatus","warnings"].map(key=>[key,memory[key]])):memory.kind==="notebook_research_summary"?Object.fromEntries(["recordId","notebookId","theme","conditionCodes","period","cohortIds","outcomes","evidenceIds","methodVersion","warnings","displayedSuccessExamples","displayedFailureExamples"].map(key=>[key,memory[key]])):projectDejavuMemory({...memory,namespace});
         const pendingText = state.pendingText || JSON.stringify(projection);
         await store.write(key, { ...state, status: "submitting", namespace, idempotencyKey, pendingText, environmentBinding: provider.environmentBinding });
         const accepted = await provider.remember(

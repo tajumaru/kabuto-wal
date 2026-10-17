@@ -9,6 +9,7 @@ import { createLabPlan,selectLabMethod } from "./hunter-experiment-temporal";
 import { generateLabHypothesis } from "./hunter-experiment-hypotheses";
 import { createLabRun,runLabExperiment,controlLabRun,readLabRun,labRunKey } from "./hunter-experiment-runner";
 import { readLabReport } from "./hunter-experiment-report";
+import { saveLabMemory,syncLabMemory,recallLabMemory,saveLabProvenance } from "./hunter-experiment-memory";
 const pageSchema=z.object({page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(50).default(20)});
 const paramsSchema=z.object({id:cohortIdSchema});
 export function registerHunterLab(app:FastifyInstance,s:Service){
@@ -27,4 +28,8 @@ export function registerHunterLab(app:FastifyInstance,s:Service){
   app.get("/api/research/lab/runs/:id",async req=>readLabRun(s,paramsSchema.parse(req.params).id));
   app.post("/api/research/lab/runs/:id/control",async req=>{const {id}=paramsSchema.parse(req.params),q=z.object({action:z.enum(["pause","cancel","resume"])}).strict().parse(req.body),j=await controlLabRun(s,id,q.action);if(q.action==="resume")start(id);return j;});
   app.get("/api/research/lab/runs/:id/report",async req=>readLabReport(s,paramsSchema.parse(req.params).id));
+  app.get("/api/research/lab/runs/:id/provenance",async req=>saveLabProvenance(s,paramsSchema.parse(req.params).id));
+  app.post("/api/research/lab/runs/:id/memory",async req=>saveLabMemory(s,paramsSchema.parse(req.params).id));
+  app.post("/api/research/lab/runs/:id/sync",async req=>{const q=z.object({confirmExternal:z.literal(true)}).strict().parse(req.body);return syncLabMemory(s,paramsSchema.parse(req.params).id,q.confirmExternal);});
+  app.post("/api/research/lab/recall",async req=>recallLabMemory(s,req.body));
 }

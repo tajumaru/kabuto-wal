@@ -1,0 +1,7 @@
+import { useState } from "react";
+import { z } from "zod";
+export function LabMemory({id,request}:{id:string;request:(url:string,body?:unknown)=>Promise<unknown>}){
+ const [confirm,setConfirm]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState(""),[manifestHash,setHash]=useState("");
+ async function act(action:"memory"|"sync"|"provenance"){setBusy(true);setMessage("");try{const r=await request(`/research/lab/runs/${id}/${action}`,action==="provenance"?undefined:action==="sync"?{confirmExternal:confirm}:{});if(action==="provenance")setHash(z.object({manifestHash:z.string()}).parse(r).manifestHash);setMessage(action==="memory"?`ローカル記憶：${z.object({status:z.string()}).parse(r).status}。外部送信はしていません。`:action==="sync"?"同期結果を保存しました。":"manifest hashを照合しました。Sui書き込みは行いません。");}catch(e){setMessage(e instanceof Error?e.message:"処理できませんでした");}finally{setBusy(false);}}
+ return <section className="card"><h2>実験記憶と検証可能性</h2><p>正本はローカルJSON。削除済み記憶は再生成しません。採用状態は記憶保存時点の記録です。</p><button disabled={busy} onClick={()=>void act("memory")}>実験記憶をローカル保存</button><label className="lab-confirm"><input type="checkbox" checked={confirm} onChange={e=>setConfirm(e.target.checked)}/>今回の外部同期を許可する（環境の送信許可・権利確認も必要）</label><button disabled={busy||!confirm} onClick={()=>void act("sync")}>実験記憶をMemWal同期</button><button disabled={busy} onClick={()=>void act("provenance")}>manifest hashを確認</button>{manifestHash&&<p>SHA-256：{manifestHash}</p>}{message&&<p role="status">{message}</p>}</section>;
+}
