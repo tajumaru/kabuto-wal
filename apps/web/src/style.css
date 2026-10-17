@@ -1,4 +1,129 @@
 @import "tailwindcss";
+
+/* Shared ocean palette for the research workspace. */
+:root:root {
+  --text: #173c46;
+  --page: #f0f8f8;
+  --surface: #ffffff;
+  --soft: #eaf6f5;
+  --border: #d0e5e5;
+  --muted: #55757c;
+  --brand-accent: #237c92;
+  --workspace-glow: #dff2f9;
+  --workspace-mint: #e1f4ec;
+  --primary: #174e59;
+  --primary-hover: #216572;
+}
+:root:root[data-theme="dark"] {
+  --text: #daf1ef;
+  --page: #0d2229;
+  --surface: #153039;
+  --soft: #1c3b43;
+  --border: #30515a;
+  --muted: #a0bfc3;
+  --brand-accent: #83d4e7;
+  --workspace-glow: #153848;
+  --workspace-mint: #163b37;
+  --primary: #b9f1df;
+  --primary-hover: #d0f8eb;
+}
+.shell > main {
+  background: radial-gradient(ellipse 80% 420px at 95% 0, var(--workspace-glow), transparent), var(--page);
+}
+.shell > main > header {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--muted);
+}
+.shell > main .header-brand { letter-spacing: .04em; font-size: 12px; }
+.shell > main .theme-toggle { background: var(--soft); color: var(--text); border: 1px solid var(--border); border-radius: 100px; }
+.shell > main .badge { background: var(--soft); border-color: var(--border); color: var(--brand-accent); border-radius: 100px; padding: 6px 12px; }
+.shell > main .title { padding-bottom: 8px; }
+.shell > main .title > span { color: var(--brand-accent); font-weight: 650; letter-spacing: .14em; }
+.shell > main .title h1 { color: var(--text); letter-spacing: -.035em; font-weight: 650; }
+.shell > main :is(.title p, .muted, .sectionhead > span, .card small, .stats small, .stats em, .callout p, details) { color: var(--muted); }
+.shell > main .card {
+  border-color: var(--border);
+  border-radius: 18px;
+  box-shadow: 0 4px 20px rgb(14 64 73 / 3%);
+}
+.shell > main :is(.card h2, .sectionhead h2) { letter-spacing: -.02em; font-weight: 650; }
+.shell > main .stats > div {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--surface) 30%, var(--soft));
+  border-color: var(--border);
+  border-radius: 18px;
+  box-shadow: 0 4px 20px rgb(14 64 73 / 3%);
+}
+.shell > main .stats > div::before { content: ''; display: block; width: 24px; height: 4px; border-radius: 4px; background: #55b8cb; margin-bottom: 16px; }
+.shell > main .stats > div:nth-child(2)::before { background: #61bda1; }
+.shell > main .stats > div:nth-child(3)::before { background: #7fadd1; }
+.shell > main .stats strong { font-weight: 550; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.shell > main :is(.toolbar, .chatinput) > button,
+.shell > main .action > button:not([class]),
+.shell > main a.button { background: var(--primary); color: var(--surface); border-radius: 12px; }
+.shell > main :is(.toolbar, .chatinput) > button:hover,
+.shell > main .action > button:not([class]):hover,
+.shell > main a.button:hover { background: var(--primary-hover); }
+.shell > main .stockcard > .action > button:not([class]) { background: transparent; color: var(--muted); }
+.shell > main .stockcard > .action > button:not([class]):hover { background: var(--soft); color: var(--text); }
+.shell > main :is(input, select, textarea) { border-color: var(--border); border-radius: 10px; }
+.shell > main :is(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--brand-accent); outline-offset: 3px; }
+.shell > main :is(.tablewrap, .chatinput) { border-color: var(--border); border-radius: 16px; }
+.shell > main th { background: var(--soft); color: var(--muted); font-weight: 600; }
+.shell > main :is(td, th) { border-color: var(--border); }
+.shell > main tbody tr:hover { background: var(--soft); }
+.shell > main .callout { background: linear-gradient(120deg, var(--soft), var(--workspace-mint)); border-color: var(--border); border-radius: 18px; }
+.shell > main :is(.callout > span, .callout a, .userquestion) { color: var(--brand-accent); }
+.shell > main .promptcard button { background: var(--soft); color: var(--text); border: 1px solid var(--border); border-radius: 12px; }
+.shell > main .promptcard button:hover { border-color: var(--brand-accent); }
+.shell > main .reference { border-left-color: #58b8b0; border-radius: 0 10px 10px 0; }
+/* Preserve the stronger visual meaning of destructive actions. */
+.shell > main section.card.memory-delete { border-color: var(--delete-line); }
+.shell > main .memory-delete .action > button:not([class]) { background: var(--delete-accent); color: #fff; }
+@media (prefers-reduced-motion: reduce) { .research-sidebar nav a { transition: none; } }
+.research-sidebar {
+  --menu-ink: #173c46;
+  --menu-muted: #52777d;
+  --menu-line: #cce5e6;
+  --menu-active: #b9f1df;
+  background: radial-gradient(ellipse at 0 0, #d9f4fb 0, transparent 55%), linear-gradient(165deg, #f2fbfc, #e9f5f2);
+  border-right-color: var(--menu-line);
+  color: var(--menu-ink);
+  padding: 30px 16px 20px;
+  overflow-y: auto;
+}
+.research-sidebar .brand { gap: 10px; padding: 0 5px; }
+.research-sidebar .brand > span { font-size: 16px; letter-spacing: -.6px; white-space: nowrap; }
+.research-sidebar .brand small { color: var(--menu-muted); font-size: 9px; letter-spacing: 0; white-space: normal; line-height: 1.7; }
+.research-sidebar .logo { width: 48px; }
+.sidebar-ecosystem { display: flex; align-items: center; gap: 9px; margin: 22px 10px 0; color: var(--menu-ink); font-size: 11px; font-weight: 650; letter-spacing: .04em; }
+.sidebar-ecosystem span { display: inline-flex; align-items: center; gap: 5px; }
+.sidebar-ecosystem span::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #4da2ff; }
+.sidebar-ecosystem span:last-child::before { background: #53b79c; }
+.sidebar-ecosystem i { height: 11px; width: 1px; background: var(--menu-line); }
+.research-sidebar .navlabel { margin: 28px 12px 14px; color: var(--menu-muted); font-size: 10px; letter-spacing: .06em; }
+.research-sidebar nav { gap: 6px; }
+.research-sidebar nav a { position: relative; align-items: center; gap: 12px; min-height: 47px; padding: 12px 16px; border: 1px solid transparent; border-radius: 14px; color: var(--menu-muted); font-size: 13px; transition: background .18s, color .18s, border-color .18s; }
+.research-sidebar .menu-icon { flex-shrink: 0; }
+.research-sidebar nav a:hover { color: var(--menu-ink); background: rgb(255 255 255 / 65%); border-color: var(--menu-line); }
+.research-sidebar nav a.active { color: var(--menu-ink); background: var(--menu-active); border-color: #9cd9c8; font-weight: 650; box-shadow: 0 3px 10px rgb(24 91 78 / 5%); }
+.research-sidebar nav a.active::after { content: ''; width: 5px; height: 5px; margin-left: auto; flex-shrink: 0; border-radius: 50%; background: #22745f; }
+.research-sidebar a:focus-visible { outline: 2px solid #328bc5; outline-offset: 3px; }
+.research-sidebar .sidefoot { margin-top: auto; padding: 22px 12px 0; color: var(--menu-muted); }
+.research-sidebar .sidefoot small { color: var(--menu-muted); border-top: 1px solid var(--menu-line); padding-top: 14px; font-size: 9px; }
+:root[data-theme="dark"] .research-sidebar { --menu-ink: #d7f5ed; --menu-muted: #9ebfbf; --menu-line: #294b50; --menu-active: #234e46; background: radial-gradient(ellipse at 0 0, #183d50, transparent 60%), #10282e; }
+:root[data-theme="dark"] .research-sidebar nav a:hover { background: #1b3940; }
+:root[data-theme="dark"] .research-sidebar nav a.active { border-color: #3e7c6a; }
+:root[data-theme="dark"] .research-sidebar nav a.active::after { background: #83dfbc; }
+@media (max-width: 700px) {
+  .research-sidebar { padding: 5px; overflow-x: auto; overflow-y: hidden; border-top-color: var(--menu-line); }
+  .research-sidebar .brand, .research-sidebar .sidebar-ecosystem { display: none; }
+  .research-sidebar nav { gap: 0; min-width: 350px; }
+  .research-sidebar nav a { flex-direction: column; gap: 5px; min-height: 54px; padding: 7px 5px; font-size: 9px; border-radius: 10px; }
+  .research-sidebar nav a.active::after { display: none; }
+}
 .reset-scope-note { margin: 20px 0; padding: 16px 20px; border-left: 3px solid #b78748; border-radius: 0 8px 8px 0; background: var(--soft); }
 .reset-scope-note strong { font-size: 13px; }
 .reset-scope-note p { margin: 8px 0 0; max-width: 75ch; }
@@ -637,7 +762,7 @@ pre {
   font-size: 13px;
 }
 .memory {
-  max-width: 900px;
+  min-width: 0;
 }
 dl {
   display: grid;

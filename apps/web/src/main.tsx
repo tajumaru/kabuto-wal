@@ -182,11 +182,24 @@ function SelectStock({
     />
   );
 }
+function MenuIcon({ kind }: { kind: string }) {
+  const paths: Record<string, React.ReactNode> = {
+    home: <><rect x="3" y="3" width="18" height="18" rx="5" /><path d="M9 3v18M9 10h12" /></>,
+    chat: <><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-1 1v-9.5a8.5 8.5 0 0 1 17 0Z" /><path d="M8 10h8M8 14h5" /></>,
+    similar: <><path d="m3 9 4-4 4 4 4-4 6 6M3 17l4-4 4 4 4-4 6 6" /></>,
+    bottom: <><path d="M4 4v16h16M7 9l4 6 4-4 5 2" /><circle cx="11" cy="15" r="2" /></>,
+    hunter: <><circle cx="11" cy="11" r="7" /><path d="m16 16 5 5M11 7v8M7 11h8" /></>,
+    predictions: <><path d="M4 20V4M4 20h16M8 15l5-5 3 2 5-7M16 5h5v5" /></>,
+    memories: <><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v7c0 4 16 4 16 0V5M4 12v7c0 4 16 4 16 0v-7" /></>,
+    settings: <><path d="m9 3-1 3-3 1-2 5 2 5 3 1 1 3h6l1-3 3-1 2-5-2-5-3-1-1-3Z" /><circle cx="12" cy="12" r="3" /></>,
+  };
+  return <svg className="menu-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[kind]}</svg>;
+}
 function App() {
   const { data: status, error } = useData("/status");
   return (
     <div className="shell">
-      <aside>
+      <aside className="research-sidebar">
         <Link className="brand" to="/">
           <img
             className="logo"
@@ -199,20 +212,21 @@ function App() {
             KABUTO WAL<small>相場を知る。判断を覚える。</small>
           </span>
         </Link>
-        <p className="navlabel">RESEARCH WORKSPACE</p>
-        <nav>
+        <div className="sidebar-ecosystem"><span>Sui</span><i aria-hidden="true" /> <span>Walrus</span></div>
+        <p className="navlabel">相場と記憶のワークスペース</p>
+        <nav aria-label="メインメニュー">
           {[
-            ["/", "ホーム", "◫"],
-            ["/chat", "記憶チャット", "◌"],
-            ["/similar", "類似相場", "⌁"],
-            ["/bottom", "底打ち研究", "↗"],
-            ["/bottom/hunter", "底打ちハンター", "⌕"],
-            ["/predictions", "予測と検証", "↗"],
-            ["/memories", "記憶一覧", "▤"],
-            ["/settings", "設定", "⚙"],
+            ["/", "ホーム", "home"],
+            ["/chat", "記憶チャット", "chat"],
+            ["/similar", "類似相場", "similar"],
+            ["/bottom", "底打ち研究", "bottom"],
+            ["/bottom/hunter", "底打ちハンター", "hunter"],
+            ["/predictions", "予測と検証", "predictions"],
+            ["/memories", "記憶一覧", "memories"],
+            ["/settings", "設定", "settings"],
           ].map(([p, t, i]) => (
-            <NavLink end={p === "/"} key={p} to={p}>
-              <span>{i}</span>
+            <NavLink end key={p} to={p}>
+              <MenuIcon kind={i} />
               {t}
             </NavLink>
           ))}

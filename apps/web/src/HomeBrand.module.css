@@ -8,12 +8,13 @@
   padding: 25px 32px;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 20px;
   background-color: var(--surface);
   background-image: linear-gradient(
     110deg,
-    transparent 38%,
-    rgb(105 195 255 / 7%)
+    var(--surface) 18%,
+    var(--workspace-glow) 65%,
+    var(--workspace-mint)
   );
   color: var(--text);
 }
@@ -24,7 +25,7 @@
   bottom: 0;
   left: 25px;
   height: 1px;
-  background: linear-gradient(90deg, #bda169, rgb(189 161 105 / 18%));
+  background: linear-gradient(90deg, #58b8cb, #83cdb5, transparent);
   content: "";
 }
 
@@ -46,7 +47,7 @@
   font-size: 22px;
   font-weight: 600;
   line-height: 1.2;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.06em;
 }
 
 .header .brand span {
