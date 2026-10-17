@@ -1,7 +1,7 @@
 import type { Service } from "./service";
 import { z } from "zod";
 import { cohortBase,readCohort } from "./hunter-cohort";
-import { cohortEvaluationSchema,type CohortEvaluation } from "../../../packages/core/hunter-cohort-schema";
+import { cohortEvaluationSchema,type CohortEvaluation,type CohortManifest,type CohortMember } from "../../../packages/core/hunter-cohort-schema";
 import { targetDate,type Calendar,type Bar } from "../../../packages/core/index";
 import { hash,ADJUSTMENT_VERSION } from "../../../packages/integrations/adjusted-series";
 import { MarketIngestion } from "../../../packages/integrations/market-ingestion";
@@ -17,12 +17,16 @@ export function cohortPathOutcome(path:Bar[],asOf:string,target:string,calendar:
   return {actualReturn:prices.at(-1)!/base-1,up:prices.at(-1)!>base,maxDrawdown:drawdown,maxRise:rise,relapse,inputRevisionIds:rows.map(b=>b!.revisionId),dataAvailableAt:new Date(Math.max(...rows.map(b=>Date.parse(b!.availableAt)))).toISOString(),basePrice:base,targetPrice:prices.at(-1)!};
 }
 export async function evaluateCohort(service:Service,id:string,now=new Date()){
-  const {manifest,members}=await readCohort(service,id),cutoff=now.toISOString(),today=now.toLocaleDateString("sv-SE",{timeZone:"Asia/Tokyo"});
+  const {manifest,members}=await readCohort(service,id);return evaluateCohortMembers(service,manifest,members,now);
+}
+export async function evaluateCohortMembers(service:Service,manifest:CohortManifest,members:CohortMember[],now=new Date(),frozenCalendar?:Calendar){
+  const id=manifest.cohortId,cutoff=now.toISOString(),today=now.toLocaleDateString("sv-SE",{timeZone:"Asia/Tokyo"});
   if(manifest.createdAt>cutoff)throw Error("作成前のコホートは評価できません");
-  const calendar=await service.store.read<Calendar>("market/calendar.json",[]),results:CohortEvaluation[]=[];
+  const calendar=frozenCalendar??await service.store.read<Calendar>("market/calendar.json",[]),results:CohortEvaluation[]=[];
   if(new Set(calendar.map(d=>d.date)).size!==calendar.length)throw Error("営業日カレンダーが重複しています");
   const series=new Map<string,Promise<Bar[]>>();
-  const load=(code:string,target:string)=>{const key=`${code}/${target}`;let pending=series.get(key);if(!pending){pending=service.mode==="demo"?snapshot(service,code,cutoff):new MarketIngestion(service.store,null,manifest.plan).series(code,target,cutoff,manifest.asOf,undefined,false).then(s=>s.bars);series.set(key,pending);}return pending;};
+  const latestDue=Object.values(manifest.targets).filter((d):d is string=>!!d&&d<=today).sort().at(-1);
+  const load=(code:string,target:string)=>{const end=latestDue??target,key=`${code}/${end}`;let pending=series.get(key);if(!pending){pending=service.mode==="demo"?snapshot(service,code,cutoff):new MarketIngestion(service.store,null,manifest.plan).series(code,end,cutoff,manifest.asOf,undefined,false).then(s=>s.bars);series.set(key,pending);}return pending;};
   for(const member of members)for(const horizon of [1,5,20] as const){
     let target:string|null=null,status:CohortEvaluation["status"]="pending",reasons:string[]=[],outcome:ReturnType<typeof cohortPathOutcome>=null;
     try{target=manifest.targets[String(horizon) as "1"|"5"|"20"];if(!target||targetDate(calendar,manifest.asOf,horizon)!==target){target=null;reasons=["calendar-incomplete-or-revised"];}}catch{reasons=["calendar-incomplete"];}

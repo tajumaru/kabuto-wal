@@ -9,6 +9,7 @@ import { hash } from "../../../packages/integrations/adjusted-series";
 import { evaluateCohort,cohortEvaluations } from "./hunter-cohort-evaluation";
 import { targetDate,type Calendar } from "../../../packages/core/index";
 import { cohortReport } from "./hunter-cohort-report";
+import { createCohortJob,runCohortJob,controlCohortJob,cohortJobProgress,readCohortJob,cohortJobKey } from "./hunter-cohort-jobs";
 export const cohortBase=(id:string)=>`market/hunter/cohorts/${cohortIdSchema.parse(id)}`;
 export function cohortIdentity(m:Omit<CohortManifest,"cohortId"|"createdAt">){return hash(m);}
 export async function readCohort(service:Service,id:string){
@@ -55,6 +56,10 @@ export async function createCohort(service:Service,raw:unknown,now=new Date()){
   });
 }
 export function registerHunterCohorts(app:FastifyInstance,service:Service){
+  const start=(id:string)=>{void runCohortJob(service,id).catch(async()=>{await service.store.lock(async()=>{const j=await readCohortJob(service,id);if(j.status==="queued")await service.store.write(cohortJobKey(id),{...j,status:"failed",error:"評価入力の検証に失敗しました"});});});};
+  app.post("/api/bottom/hunter/cohorts/:id/evaluation-jobs",async req=>{const {id}=z.object({id:cohortIdSchema}).parse(req.params);z.object({}).strict().parse(req.body??{});const job=await createCohortJob(service,id);start(job.runId);return job;});
+  app.get("/api/bottom/hunter/cohort-evaluation-jobs/:id",async req=>cohortJobProgress(service,z.object({id:cohortIdSchema}).parse(req.params).id));
+  app.post("/api/bottom/hunter/cohort-evaluation-jobs/:id/control",async req=>{const {id}=z.object({id:cohortIdSchema}).parse(req.params),q=z.object({action:z.enum(["pause","cancel","resume"])}).strict().parse(req.body);const j=await controlCohortJob(service,id,q.action);if(q.action==="resume")start(id);return j;});
   app.post("/api/bottom/hunter/cohorts/report",async req=>{const q=z.object({cohortIds:z.array(cohortIdSchema).min(1).max(100)}).strict().parse(req.body);return cohortReport(service,q.cohortIds);});
   app.post("/api/bottom/hunter/cohorts/:id/evaluate",async req=>{const {id}=z.object({id:cohortIdSchema}).parse(req.params);return evaluateCohort(service,id);});
   app.get("/api/bottom/hunter/cohorts/:id/evaluations",async req=>{const {id}=z.object({id:cohortIdSchema}).parse(req.params);const q=z.object({page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(20)}).parse(req.query);const rows=await cohortEvaluations(service,id);return {records:rows.slice((q.page-1)*q.pageSize,q.page*q.pageSize),total:rows.length,...q};});

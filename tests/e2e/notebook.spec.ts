@@ -6,7 +6,7 @@ test("固定コホートを評価し、研究ノート・記憶・過去締切�
   await page.goto("/research/notebook");await expect(page.getByRole("heading",{name:"かぶまる研究ノート",exact:true})).toBeVisible();
   await page.getByLabel("完了済み分析ジョブ").selectOption(job.id);await page.getByRole("button",{name:"固定コホートを作成",exact:true}).click();
   await expect(page.getByLabel("保存済みコホート")).not.toHaveValue("");
-  await page.getByRole("button",{name:"期限後評価を実行",exact:true}).click();await expect(page.getByRole("status").filter({hasText:"保存済み価格で評価"})).toBeVisible();
+  await page.getByRole("button",{name:"期限後評価を実行",exact:true}).click();await expect(page.getByRole("status").filter({hasText:"保存済み価格で評価：completed"})).toBeVisible();
   await page.getByLabel("テーマ",{exact:true}).selectOption("false-rebound");await page.getByLabel("研究時点の仮説（観測事実とは別）").fill("反発後の再下落を検証する仮説");
   await page.getByRole("button",{name:"研究ノートを作成",exact:true}).click();await expect(page.getByRole("heading",{name:"候補・非候補の比較",exact:true})).toBeVisible();
   await expect(page.getByRole("heading",{name:"スコア帯別実績",exact:true}).first()).toBeVisible();

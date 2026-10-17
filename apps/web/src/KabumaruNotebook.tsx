@@ -5,6 +5,7 @@ import { z } from "zod";
 import { notebookOriginalSchema,notebookSummarySchema,notebookViewSchema,notebookThemes,notebookTheme } from "../../../packages/core/kabumaru-notebook-schema";
 import { cohortManifestSchema } from "../../../packages/core/hunter-cohort-schema";
 import { hunterStatusSchema } from "../../../packages/core/hunter-schema";
+import { cohortEvaluationJobSchema } from "../../../packages/core/cohort-evaluation-job-schema";
 import { KabumaruPortrait } from "./Kabumaru";
 import { NotebookMemory } from "./NotebookMemory";
 import "./KabumaruNotebook.css";
@@ -15,6 +16,8 @@ const historySchema=z.object({records:z.array(notebookOriginalSchema.pick({noteb
 export function KabumaruNotebook({request}:{request:Request}){
   const [params,setParams]=useSearchParams(),client=useQueryClient(),[theme,setTheme]=useState<z.infer<typeof notebookTheme>>("volume-reversal"),[hypothesis,setHypothesis]=useState(""),[jobId,setJob]=useState(""),[experiment,setExperiment]=useState("retrospective"),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
   const page=Math.max(1,Number(params.get("page"))||1),id=params.get("id")??"",cohortId=params.get("cohort")??"";
+  const evaluationJobId=params.get("evaluationJob")??"";
+  const evaluationJob=useQuery({queryKey:["cohort-evaluation-job",evaluationJobId],enabled:/^[a-f0-9]{64}$/.test(evaluationJobId),queryFn:async()=>z.object({job:cohortEvaluationJobSchema,completedSymbols:z.number(),evaluated:z.number(),pending:z.number(),missing:z.number(),excluded:z.number()}).parse(await request(`/bottom/hunter/cohort-evaluation-jobs/${evaluationJobId}`)),refetchInterval:q=>["queued","running"].includes(q.state.data?.job.status??"")?1000:false});
   const status=useQuery({queryKey:["hunter-status"],queryFn:async()=>hunterStatusSchema.parse(await request("/bottom/hunter/status"))});
   const cohorts=useQuery({queryKey:["notebook-cohorts",page],queryFn:async()=>z.object({records:z.array(cohortManifestSchema),total:z.number()}).parse(await request(`/bottom/hunter/cohorts?page=${page}`))});
   const history=useQuery({queryKey:["notebook-history",page],queryFn:async()=>historySchema.parse(await request(`/research/notebook?page=${page}`))});
@@ -25,7 +28,7 @@ export function KabumaruNotebook({request}:{request:Request}){
   async function act(kind:"cohort"|"evaluate"|"note"){
     setBusy(true);setMessage("");try{
       if(kind==="cohort"){const c=cohortManifestSchema.parse(await request("/bottom/hunter/cohorts",{jobId,experiment}));update("cohort",c.cohortId);setMessage("候補と非候補を同時に固定しました。");}
-      else if(kind==="evaluate"){await request(`/bottom/hunter/cohorts/${cohortId}/evaluate`,{});setMessage("保存済み価格で評価しました。未取得の価格は確定しません。");}
+      else if(kind==="evaluate"){const job=cohortEvaluationJobSchema.parse(await request(`/bottom/hunter/cohorts/${cohortId}/evaluation-jobs`,{}));update("evaluationJob",job.runId);setMessage("保存済み価格で評価するジョブを開始しました。未取得の価格は確定しません。");}
       else{const n=z.object({notebookId:z.string()}).parse(await request("/research/notebook?view=compact",{theme,cohortIds:[cohortId],hypothesis}));update("id",n.notebookId);setMessage("研究ノート原本を保存しました。");}
       await Promise.all([client.invalidateQueries({queryKey:["notebook-cohorts"]}),client.invalidateQueries({queryKey:["notebook-history"]})]);
     }catch(e){setMessage(e instanceof Error?e.message:"処理できませんでした。");}finally{setBusy(false);}
@@ -39,10 +42,12 @@ export function KabumaruNotebook({request}:{request:Request}){
       <button disabled={busy||!jobId} onClick={()=>void act("cohort")}>固定コホートを作成</button>
       <label>保存済みコホート<select value={cohortId} onChange={e=>update("cohort",e.target.value)}><option value="">選択してください</option>{cohorts.data?.records.map(c=><option key={c.cohortId} value={c.cohortId}>{c.asOf} · {c.experiment} · {c.memberCount}銘柄 · {c.cohortId.slice(0,8)}</option>)}</select></label>
       <button disabled={busy||!cohortId} onClick={()=>void act("evaluate")}>期限後評価を実行</button>
+      {evaluationJob.data&&evaluationJob.data.job.cohortId===cohortId&&<div aria-live="polite"><p role="status">保存済み価格で評価：{evaluationJob.data.job.status} ／ {evaluationJob.data.completedSymbols}/{evaluationJob.data.job.symbolTotal}銘柄 ／ 評価済{evaluationJob.data.evaluated}・価格不足{evaluationJob.data.missing}・計算失敗{evaluationJob.data.job.failed}</p>{(["pause","cancel","resume"] as const).map(action=><button key={action} disabled={busy||evaluationJob.data.job.status==="completed"} onClick={()=>{void request(`/bottom/hunter/cohort-evaluation-jobs/${evaluationJobId}/control`,{action}).then(()=>client.invalidateQueries({queryKey:["cohort-evaluation-job",evaluationJobId]})).catch(e=>setMessage(e instanceof Error?e.message:"操作できませんでした"));}}>{action==="pause"?"評価を中断":action==="cancel"?"評価をキャンセル":"評価を再開"}</button>)}</div>}
+      {evaluationJob.error&&<p role="alert">評価ジョブを確認できません。{evaluationJob.error.message}</p>}
     </section>
     <section className="card"><h2>研究テーマ一覧</h2><label>テーマ<select aria-label="テーマ" value={theme} onChange={e=>setTheme(notebookTheme.parse(e.target.value))}>{notebookTheme.options.map(t=><option key={t} value={t}>{notebookThemes[t]}</option>)}</select></label>
       <label>研究時点の仮説（観測事実とは別）<textarea maxLength={500} value={hypothesis} onChange={e=>setHypothesis(e.target.value)}/></label>
-      <button disabled={busy||!cohortId} onClick={()=>void act("note")}>研究ノートを作成</button><p>未評価・標本不足も保存し、根拠のない成績を補完しません。</p>
+      <button disabled={busy||!cohortId||!!evaluationJob.data&&evaluationJob.data.job.cohortId===cohortId&&evaluationJob.data.job.status!=="completed"} onClick={()=>void act("note")}>研究ノートを作成</button><p>未評価・標本不足も保存し、根拠のない成績を補完しません。</p>
     </section>
     {busy&&<p role="status">原本を確認中…</p>}{message&&<p role="status">{message}</p>}
     {(cohorts.error||history.error||status.error||note.error)&&<p role="alert">保存済みデータを確認できません。{(note.error??cohorts.error??history.error??status.error)?.message}</p>}
