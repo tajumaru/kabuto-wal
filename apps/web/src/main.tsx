@@ -106,7 +106,7 @@ function Chart({
           <Tooltip />
           <Area
             dataKey={field}
-            name={field === "adjClose" ? "調整済み終値" : field === "volume" ? "出来高" : "価格"}
+            name={field === "adjClose" ? "調整後終値" : field === "volume" ? "出来高" : "価格"}
             stroke={chartColor}
             fill={`url(#${gradientId})`}
             strokeWidth={2}
@@ -367,7 +367,7 @@ function Home() {
       </div>
       <div className="sectionhead">
         <h2>ウォッチリスト</h2>
-        <span>日足 · 調整済み終値</span>
+        <span>日足 · 調整後終値</span>
       </div>
       {stocks.length === 0 && (
         <div className="card empty">
@@ -457,7 +457,7 @@ function Stock() {
       </div>
       <div className="card">
         <h2>
-          {yen(last?.adjClose)} <span className="muted">調整済み終値</span>
+          {yen(last?.adjClose)} <span className="muted">調整後終値</span>
         </h2>
         <Chart data={data.slice(-period)} />
         <div className="volume">

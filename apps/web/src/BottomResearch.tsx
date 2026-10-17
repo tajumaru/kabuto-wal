@@ -143,7 +143,7 @@ export function BottomResearch({
                       <Legend />
                       <Line
                         dataKey="close"
-                        name="調整済み終値"
+                        name="調整後終値"
                         stroke="#2698d6"
                         dot={false}
                         isAnimationActive={false}
