@@ -1,4 +1,5 @@
-import { searchDejavu, notifyDejavu, saveDejavu, recallDejavu } from "./dejavu";
+import { searchDejavuContext } from "./hunter-research";
+import { notifyDejavu, saveDejavu, recallDejavu } from "./dejavu";
 import { registerDejavuJournal } from "./dejavu-journal";
 import { registerBottom } from "./bottom";
 import { registerHunter } from "./hunter";
@@ -274,6 +275,7 @@ export async function createApp(service = new Service()) {
       .object({
         code,
         compareCode: code.optional(),
+        hunterJobId: z.string().uuid().optional(),
         asOf: z
           .string()
           .date()
@@ -282,7 +284,7 @@ export async function createApp(service = new Service()) {
       .parse(req.query);
     let result;
     try {
-      result = await searchDejavu(service, q.code, q.asOf, q.compareCode);
+      result = await searchDejavuContext(service, q.code, q.asOf, q.compareCode, q.hunterJobId);
     } catch (e) {
       const reason = e instanceof Error ? e.message : "";
       if (["比較元の日足なし", "基準日時点の連続20営業日日足が不足", "20営業日のOHLCVが必要です", "欠損・不正・異なる調整系列のOHLCV窓"].includes(reason)) {
@@ -300,6 +302,7 @@ export async function createApp(service = new Service()) {
       .object({
         code,
         compareCode: code.optional(),
+        hunterJobId: z.string().uuid().optional(),
         asOf: z
           .string()
           .date()
@@ -308,7 +311,7 @@ export async function createApp(service = new Service()) {
       .parse(req.body);
     return saveDejavu(
       service,
-      await searchDejavu(service, q.code, q.asOf, q.compareCode),
+      await searchDejavuContext(service, q.code, q.asOf, q.compareCode, q.hunterJobId),
     );
   });
   app.get("/api/dejavu/memories", async (req) => {

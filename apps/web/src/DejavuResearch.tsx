@@ -29,6 +29,7 @@ export function DejavuResearch({
   compare,
   request,
   memories,
+  hunterJobId,
 }: {
   data: Result;
   code: string;
@@ -36,13 +37,14 @@ export function DejavuResearch({
   compare: string;
   request: Request;
   memories: React.ReactNode;
+  hunterJobId?: string;
 }) {
   const [horizon, setHorizon] = useState<1 | 5 | 20>(5),
     [example, setExample] = useState(0);
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState("");
   const client = useQueryClient();
-  const params = `code=${code}${date ? `&asOf=${date}` : ""}${compare ? `&compareCode=${compare}` : ""}`;
+  const params = `code=${code}${date ? `&asOf=${date}` : ""}${compare ? `&compareCode=${compare}` : ""}${hunterJobId ? `&hunterJobId=${hunterJobId}` : ""}`;
   const explanation = useQuery({
     queryKey: ["dejavu-explanation", data.recordId],
     queryFn: async () => dejavuExplanationSchema.parse(await request(`/dejavu/explanation?${params}`)),
@@ -71,6 +73,7 @@ export function DejavuResearch({
           code,
           asOf: date || undefined,
           compareCode: compare || undefined,
+          hunterJobId: hunterJobId || undefined,
         }));
         setMessage(
           `1・5・20営業日の仮説を記録しました（${r.records.length}件）。同じ条件の原本は再作成しません。${r.syncError || ""}`,
@@ -85,6 +88,7 @@ export function DejavuResearch({
           code,
           asOf: date || undefined,
           compareCode: compare || undefined,
+          hunterJobId: hunterJobId || undefined,
         }));
         setMessage(
           r.sync.status === "synced"
@@ -411,13 +415,14 @@ export function DejavuResearch({
         </p>
         <div className="toolbar">
           <button
-            disabled={busy || !data.examples.length}
+            disabled={busy || !!hunterJobId || !data.examples.length}
             onClick={() => void act("forecast")}
+            title={hunterJobId ? "ハンター詳細から研究仮説を記録してください" : undefined}
           >
             このデジャヴから予測を記録
           </button>
           <button
-            disabled={busy || !data.examples.length}
+            disabled={busy || !!hunterJobId || !data.examples.length}
             onClick={() => void act("save")}
           >
             このデジャヴ相場を記憶する

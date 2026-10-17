@@ -62,16 +62,18 @@ export async function searchDejavu(
   code: string,
   date?: string,
   compareCode = code,
+  input?: { cutoff: string; series: Bar[]; compareSeries?: Bar[] },
 ) {
-  const history = await service.history(code);
+  const history = input?.series ?? await service.history(code);
   const asOf = date || history.at(-1)?.sessionDate;
   if (!asOf) throw Error("比較元の日足なし");
-  const cutoff = date ? `${asOf}T14:59:59.999Z` : new Date().toISOString();
-  const querySnapshot = await snapshot(service, code, cutoff);
+  const cutoff = input?.cutoff ?? (date ? `${asOf}T14:59:59.999Z` : new Date().toISOString());
+  const querySnapshot = input?.series ?? await snapshot(service, code, cutoff);
+  if (input && compareCode !== code && !input.compareSeries) throw Error("同じ取得経路の比較系列が必要です");
   const { statisticalExamples, ...result } = dejavu(
     compareCode === code
       ? querySnapshot
-      : await snapshot(service, compareCode, cutoff),
+      : input?.compareSeries ?? await snapshot(service, compareCode, cutoff),
     querySnapshot,
     asOf,
     cutoff,

@@ -20,6 +20,7 @@ export function useResearchParams() {
   const [params, setParams] = useSearchParams();
   return {
     ...readResearchParams(params),
+    hunterJobId: params.get("hunterJobId") || "",
     update: (key: "code" | "asOf" | "compareCode", value: string) =>
       setParams((current) => {
         const next = new URLSearchParams(current);

@@ -498,15 +498,15 @@ function Stock() {
 }
 function Similar() {
   const queryClient = useQueryClient();
-  const { code, date, compare, invalid, update } = useResearchParams();
+  const { code, date, compare, invalid, update, hunterJobId } = useResearchParams();
   const compareEnabled = !!compare;
   const setCode = (value: string) => update("code", value);
   const setDate = (value: string) => update("asOf", value);
   const setCompare = (value: string) => update("compareCode", value);
   const { data, error } = useQuery({
-    queryKey: ["dejavu-analysis", code, date, compare],
+    queryKey: ["dejavu-analysis", code, date, compare, hunterJobId],
     queryFn: async () => {
-      const raw: unknown = await api(`/similar?${new URLSearchParams({ code, ...(date ? { asOf: date } : {}), ...(compare ? { compareCode: compare } : {}) })}`);
+      const raw: unknown = await api(`/similar?${new URLSearchParams({ code, ...(date ? { asOf: date } : {}), ...(compare ? { compareCode: compare } : {}), ...(hunterJobId ? { hunterJobId } : {}) })}`);
       const unavailable = z.object({ ready: z.literal(false), message: z.string() }).safeParse(raw);
       return unavailable.success ? unavailable.data : dejavuResultSchema.parse(raw);
     },
@@ -556,7 +556,7 @@ function Similar() {
       {data && "ready" in data && data.ready === false && <div className="card" role="status"><h3>日足データの準備が必要です</h3><p>{data.message}</p><Link to="/">ホームで監視銘柄と日足を確認 →</Link></div>}
       {analysis?.notificationWarning && <p role="status">{analysis.notificationWarning}</p>}
       {code && !data && !error && <p role="status">20営業日の特徴量と過去事例を分析中…</p>}
-      {analysis && <DejavuResearch key={analysis.recordId} data={analysis} code={code} date={date} compare={compare} request={api} memories={<DejavuMemories code={code} date={date} saved="" />} />}
+      {analysis && <DejavuResearch key={analysis.recordId} data={analysis} code={code} date={date} compare={compare} hunterJobId={hunterJobId} request={api} memories={<DejavuMemories code={code} date={date} saved="" />} />}
     </>
   );
 }

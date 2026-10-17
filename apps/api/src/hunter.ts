@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Service } from "./service";
 import { HunterJobs } from "./hunter-jobs";
+import { searchDejavuContext } from "./hunter-research";
 import { explainBottom } from "../../../packages/core/hunter";
 import { hunterCode, hunterFilterSchema, hunterRankingsSchema, hunterStatusSchema, hunterDetailSchema, hunterJobSchema, type HunterCoverage, type HunterRow } from "../../../packages/core/hunter-schema";
 import type { BottomAnalysis } from "../../../packages/core/bottom-schema";
@@ -25,13 +26,20 @@ export async function hunterRankings(service: Service, raw: unknown) {
   return hunterRankingsSchema.parse({ coverage, total: selected.length, page: q.page, pageSize: q.pageSize,
     rows: selected.slice((q.page - 1) * q.pageSize, q.page * q.pageSize) });
 }
-export async function hunterCandidate(service: Service, code: string, id: string) {
+export async function hunterCandidate(service: Service, code: string, id: string, includeResearch = false) {
   const job = hunterJobSchema.parse(await service.store.read(`${HUNTER_BASE}/jobs/${id}.json`));
   if (!job.datasetId) return null;
   const row = await service.store.read<HunterRow | null>(`${HUNTER_BASE}/rankings/${id}/${code}.json`, null);
   if (!row) return null;
   const detail = await service.store.read<{ analysis: BottomAnalysis }>(`${HUNTER_BASE}/details/${job.datasetId}/${code}.json`);
-  return hunterDetailSchema.parse({ row, analysis: detail.analysis, explanation: explainBottom(detail.analysis), dejavu: null });
+  let dejavu = null, dejavuWarning: string | undefined;
+  if (includeResearch && detail.analysis.status === "ready") {
+    try {
+      dejavu = await searchDejavuContext(service, code, row.asOf, code, id);
+      if (dejavu.sampleCount < 20) dejavuWarning = `非重複の類似事例は${dejavu.sampleCount}件です。20件に満たない少数事例の経験分布です。`;
+    } catch (e) { dejavuWarning = e instanceof Error ? e.message : "デジャヴ用の履歴が不足しています"; }
+  }
+  return hunterDetailSchema.parse({ row, analysis: detail.analysis, explanation: explainBottom(detail.analysis), dejavu, dejavuWarning });
 }
 export function registerHunter(app: FastifyInstance, service: Service) {
   const engine = new HunterJobs(service);
@@ -53,7 +61,7 @@ export function registerHunter(app: FastifyInstance, service: Service) {
     const { code } = z.object({ code: hunterCode }).parse(req.params);
     const q = z.object({ jobId: z.string().uuid().optional(), asOf: z.string().date().optional() }).strict().parse(req.query);
     const id = await hunterJobFor(service, q);
-    const result = id ? await hunterCandidate(service, code, id) : null;
+    const result = id ? await hunterCandidate(service, code, id, true) : null;
     if (!result) return reply.code(404).send({ error: "走査済みの銘柄がありません" });
     return result;
   });

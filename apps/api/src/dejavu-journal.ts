@@ -1,3 +1,4 @@
+import { searchDejavuContext } from "./hunter-research";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
@@ -23,6 +24,7 @@ const query = z.object({
     .regex(/^[A-Z0-9]{4,5}$/)
     .optional(),
   asOf: z.string().date().optional(),
+  hunterJobId: z.string().uuid().optional(),
 });
 const reflectionSchema = z.object({
   schemaVersion: z.literal(1),
@@ -115,6 +117,7 @@ export async function recordDejavuForecast(
   service: Service,
   input: z.infer<typeof query>,
 ) {
+  if (input.hunterJobId) throw Error("ハンターの研究仮説は専用の記録操作を使用してください");
   return service.store.lock(async () => {
     const r = await searchDejavu(
       service,
@@ -255,12 +258,12 @@ export async function recordDejavuForecast(
 export function registerDejavuJournal(app: FastifyInstance, service: Service) {
   app.get("/api/dejavu/consensus", async (req) => {
     const q = query.parse(req.query);
-    return (await searchDejavu(service, q.code, q.asOf, q.compareCode))
+    return (await searchDejavuContext(service, q.code, q.asOf, q.compareCode, q.hunterJobId))
       .consensus;
   });
   app.get("/api/dejavu/explanation", async (req) => {
     const q = query.parse(req.query),
-      r = await searchDejavu(service, q.code, q.asOf, q.compareCode);
+      r = await searchDejavuContext(service, q.code, q.asOf, q.compareCode, q.hunterJobId);
     const reflections = await recallReflections(
       service,
       q.code,
