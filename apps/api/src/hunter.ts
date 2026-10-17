@@ -6,7 +6,7 @@ import { HunterJobs } from "./hunter-jobs";
 import { searchDejavuContext } from "./hunter-research";
 import { recordHunterForecast, hunterEvaluationSummary } from "./hunter-journal";
 import { HUNTER_FORECAST_METHOD } from "../../../packages/core/hunter-method";
-import { explainBottom } from "../../../packages/core/hunter";
+import { compareHunterRows, explainBottom } from "../../../packages/core/hunter";
 import { hunterCode, hunterFilterSchema, hunterRankingsSchema, hunterStatusSchema, hunterDetailSchema, hunterJobSchema, hunterRowSchema, type HunterCoverage, type HunterRow } from "../../../packages/core/hunter-schema";
 import type { BottomAnalysis } from "../../../packages/core/bottom-schema";
 
@@ -28,7 +28,8 @@ export async function hunterJobFor(service: Service, selector: { jobId?: string;
 export async function hunterRankings(service: Service, raw: unknown) {
   const q = hunterFilterSchema.parse(raw), id = await hunterJobFor(service, q);
   const coverage = id ? await service.store.read<HunterCoverage | null>(`${HUNTER_BASE}/coverage/${id}.json`, null) : null;
-  const rows = id ? await service.store.read<HunterRow[]>(`${HUNTER_BASE}/rankings/${id}/index.json`, []) : [];
+  const saved = id ? await service.store.read<HunterRow[] | null>(`${HUNTER_BASE}/rankings/${id}/index.json`, null) : null;
+  const rows = saved ?? (id ? (await new HunterJobs(service).rows(id)).sort(compareHunterRows).map((r,i) => ({ ...r, rank: i+1 })) : []);
   const selected = rows.filter(r => (!q.asOf || r.asOf === q.asOf) && (!q.market || r.market === q.market) &&
     (q.minScore === undefined || (r.score !== null && r.score >= q.minScore)) &&
     (q.rsiMin === undefined || (r.rsi !== null && r.rsi >= q.rsiMin)) && (q.rsiMax === undefined || (r.rsi !== null && r.rsi <= q.rsiMax)) &&

@@ -230,6 +230,7 @@ export class HunterJobs {
       candidateCount: rows.filter(r => r.candidate).length, unavailableCount: rows.filter(r => r.category === "判定不能").length,
       failedCount: rows.filter(r => r.acquisitionStatus === "failed").length, processedCount: rows.length, delayDays: plan?.delayDays ?? 0,
       lastObservedAt: rows.flatMap(r => r.observedAt ? [r.observedAt] : []).sort().at(-1) ?? null, exclusionReasons: reasons,
+      periodFrom: job.input.from ?? (await this.service.store.read<HunterIndex>(`${base}/indexes/${job.datasetId}/manifest.json`)).dates[0] ?? null, periodTo: job.input.asOf, plan: this.service.mode === "demo" ? "fixture" : process.env.JQUANTS_PLAN || "Free",
       complete: complete && rows.every(r => r.acquisitionStatus === "ready" && r.category !== "判定不能") });
     await this.service.store.lock(() => this.service.store.write(`${base}/coverage/${job.id}.json`, coverage));
     return coverage;

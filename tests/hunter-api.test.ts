@@ -18,6 +18,13 @@ it("ページング・共有応答・詳細・不正入力・既存API互換を�
     await engine.run(job.id);
     const r = hunterRankingsSchema.parse((await app.inject(`/api/bottom/hunter/rankings?jobId=${job.id}&pageSize=1`)).json());
     expect(r.rows).toHaveLength(1); expect(r.total).toBe(4);
+    expect(r.coverage).toMatchObject({ plan: "fixture", periodTo: "2026-10-09", acquiredCount: 1, continuous80Count: 1, failedCount: 0 });
+    expect(r.coverage?.periodFrom).toMatch(/^2026-/);
+    const paused = await engine.create({ asOf: "2026-10-09" });
+    await engine.run(paused.id, { maxSymbols: 1 });
+    const partial = hunterRankingsSchema.parse((await app.inject(`/api/bottom/hunter/rankings?jobId=${paused.id}`)).json());
+    expect(partial.rows).toHaveLength(1);
+    expect(partial.coverage).toMatchObject({ complete: false, processedCount: 1, universeCount: 4 });
     expect(hunterDetailSchema.safeParse((await app.inject(`/api/bottom/hunter/candidates/72030?jobId=${job.id}`)).json()).success).toBe(true);
     expect((await app.inject("/api/bottom/hunter/rankings?pageSize=10000")).statusCode).toBe(400);
     expect((await app.inject("/api/bottom/hunter/candidates/../bad")).statusCode).toBe(404);

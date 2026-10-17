@@ -24,6 +24,7 @@ export const hunterCoverageSchema = z.object({
   analyzedCount: z.number(), candidateCount: z.number(), unavailableCount: z.number(), failedCount: z.number(),
   processedCount: z.number(), delayDays: z.number(), lastObservedAt: z.string().nullable(),
   exclusionReasons: z.record(z.string(), z.number()), complete: z.boolean(),
+  periodFrom: z.string().date().nullable().optional(), periodTo: z.string().date().nullable().optional(), plan: z.string().optional(),
 });
 export const hunterRowSchema = z.object({
   schemaVersion: z.literal(1), methodVersion: z.literal(HUNTER_METHOD), jobId: z.string(),
