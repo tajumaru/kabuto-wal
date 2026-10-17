@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { researchInputSchema, researchResultSchema, type ResearchResult } from "../../../packages/core/kabumaru-research-schema";
 import { hunterStatusSchema } from "../../../packages/core/hunter-schema";
 import { KabumaruPortrait } from "./Kabumaru";
-import { KabumaruEvidence } from "./KabumaruEvidence";
+const KabumaruEvidence = lazy(() => import("./KabumaruEvidence").then(m=>({default:m.KabumaruEvidence})));
 import { displayStockCode } from "./stock-search";
 import { StockPicker } from "./StockPicker";
-import { ResearchOutcomes } from "./ResearchOutcomes";
+const ResearchOutcomes = lazy(() => import("./ResearchOutcomes").then(m=>({default:m.ResearchOutcomes})));
 import "./KabumaruResearch.css";
 
 type Request = (url: string, body?: unknown) => Promise<unknown>;
@@ -23,13 +23,24 @@ export function KabumaruResearch({ request }: { request: Request }) {
   const [chat, setChat] = useState<ResearchResult | null>(null), [message, setMessage] = useState(""), [busy, setBusy] = useState(false);
   const [saveHistory, setSaveHistory] = useState(false), [allowLlm, setAllowLlm] = useState(false);
   const [diagnostic, setDiagnostic] = useState<unknown>(null);
+  const [evidenceOpen,setEvidenceOpen]=useState(false),[reportOpen,setReportOpen]=useState(false);
   const raw = Object.fromEntries([...params].filter(([k]) => ["code", "asOf", "jobId"].includes(k)));
   const parsed = researchInputSchema.safeParse(raw), key = JSON.stringify(raw);
+  const currentKey=useRef(key); currentKey.current=key;
   const research = useQuery({ queryKey: ["kabumaru-research", key], enabled: parsed.success, staleTime: 30000,
     queryFn: async () => researchResultSchema.parse(await request("/research", parsed.success ? parsed.data : {})) });
   const status = useQuery({ queryKey: ["hunter-status"], queryFn: async () => hunterStatusSchema.parse(await request("/bottom/hunter/status")) });
   const master = useQuery({ queryKey: ["/master"], queryFn: async () => z.array(z.object({ providerCode: z.string(), name: z.string(), displayCode: z.string().optional() })).parse(await request("/master")) });
   const result = research.data;
+  useEffect(()=>{setChat(null);setDiagnostic(null);setMessage("");setBusy(false);setAllowLlm(false);setEvidenceOpen(false);},[key]);
+  const restored=useRef("");
+  useLayoutEffect(()=>{
+    if(!result||restored.current===key)return;
+    restored.current=key;
+    try{window.scrollTo(0,Number(sessionStorage.getItem(`research-scroll:${key}`)??0));}catch{/* Storage may be disabled. */}
+    const save=()=>{try{sessionStorage.setItem(`research-scroll:${key}`,String(window.scrollY));}catch{/* Optional preference. */}};
+    window.addEventListener("scroll",save,{passive:true});return()=>window.removeEventListener("scroll",save);
+  },[key,result]);
   const activeChat = chat && chat.code === result?.code && chat.asOf === result.asOf && chat.jobId === result.jobId ? chat : null;
   function update(k: string, value: string) {
     setParams(current => { const next = new URLSearchParams(current); if (value) next.set(k,value); else next.delete(k); if (k !== "jobId") next.delete("jobId"); return next; });
@@ -37,19 +48,21 @@ export function KabumaruResearch({ request }: { request: Request }) {
   }
   async function act(kind: "chat" | "save" | "memory" | "llm" | "diagnostic", question = "summary") {
     if (!parsed.success) return;
+    const requestKey=key;
+    if(kind==="chat"&&!saveHistory&&result){setChat({...result,question:researchInputSchema.shape.question.parse(question)});return;}
     setBusy(true); setMessage("");
     try {
       const body = { ...parsed.data, question, provider: kind === "llm" ? "configured-llm" : "deterministic", allowExternalLlm: kind === "llm" && allowLlm, recallRemote: kind === "memory" };
       if (kind === "save") {
-        const response = z.object({ note: z.string() }).parse(await request("/research/save", body)); setMessage(response.note);
-      } else if (kind === "diagnostic") setDiagnostic(await request("/research/diagnostics", body));
+        const response = z.object({ note: z.string() }).parse(await request("/research/save", body)); if(currentKey.current===requestKey)setMessage(response.note);
+      } else if (kind === "diagnostic") {const response=await request("/research/diagnostics", body);if(currentKey.current===requestKey)setDiagnostic(response);}
       else {
         const response = await request(kind === "chat" ? "/research/chat" : "/research", kind === "chat" ? { research: body, saveHistory } : body);
-        setChat(researchResultSchema.parse(response));
+        if(currentKey.current===requestKey)setChat(researchResultSchema.parse(response));
       }
-    } catch (e) { setMessage(e instanceof Error ? e.message : "研究結果を取得できませんでした。"); } finally { setBusy(false); }
+    } catch (e) { if(currentKey.current===requestKey)setMessage(e instanceof Error ? e.message : "研究結果を取得できませんでした。"); } finally { if(currentKey.current===requestKey)setBusy(false); }
   }
-  return <section className="kabumaru-research">
+  return <section className="kabumaru-research" onClick={e=>{if((e.target as HTMLElement).closest('a[href^="#evidence-"]'))setEvidenceOpen(true);}}>
     <header className="research-heading"><KabumaruPortrait pose="analyze" /><div><h1>かぶまるAI研究員</h1><p>数値は保存済みの根拠から確認するよ。将来の上昇や投資判断を約束するものではないよ。</p></div></header>
     <div className="card research-controls"><StockPicker stocks={(master.data ?? []).map(s => ({ ...s, displayCode: s.displayCode ?? displayStockCode(s.providerCode) }))} value={params.get("code") ?? ""} onChange={code => update("code",code)} loading={master.isLoading} />
       <label>研究の基準日<input type="date" value={params.get("asOf") ?? ""} onChange={e => update("asOf",e.target.value)} /></label>
@@ -75,8 +88,10 @@ export function KabumaruResearch({ request }: { request: Request }) {
         <button disabled={busy || !allowLlm} onClick={() => void act("llm")}>設定済みLLMで根拠文を構成</button>
       </details>
       <details className="card"><summary>保存済み実市場データの診断</summary><p>この1銘柄の取得状況・調整系列・revision・類似件数を確認します。J-Quantsへの追加取得は行いません。</p><button disabled={busy} onClick={() => void act("diagnostic")}>ローカル診断を実行</button>{diagnostic !== null && <pre>{JSON.stringify(diagnostic,null,2)}</pre>}</details>
-      <ResearchOutcomes request={request} jobId={result.jobId} />
-      <KabumaruEvidence evidence={result.evidence} />
+      <button aria-expanded={reportOpen} onClick={()=>setReportOpen(!reportOpen)}>実績検証レポートを{reportOpen?"閉じる":"表示"}</button>
+      {reportOpen&&<Suspense fallback={<p role="status">検証画面を読み込み中…</p>}><ResearchOutcomes request={request} jobId={result.jobId} /></Suspense>}
+      <button aria-expanded={evidenceOpen} onClick={()=>setEvidenceOpen(!evidenceOpen)}>根拠一覧を{evidenceOpen?"閉じる":"表示"}</button>
+      {evidenceOpen&&<Suspense fallback={<p role="status">根拠カードを読み込み中…</p>}><KabumaruEvidence evidence={result.evidence} /></Suspense>}
     </>}
     <Link to={`/bottom/hunter?${new URLSearchParams(Object.fromEntries([...params].filter(([k]) => ["asOf","jobId"].includes(k))))}`}>底打ちハンターへ戻る</Link>
   </section>;

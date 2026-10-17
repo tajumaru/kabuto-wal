@@ -2,3 +2,9 @@
 
 /* Keep the full assistant launcher/panel, but avoid covering research controls with an unsolicited preview. */
 body:has(.kabumaru-research) .kabumaru-bubble{display:none}
+.kabumaru-research{padding-bottom:calc(88px + env(safe-area-inset-bottom));scroll-padding-bottom:env(safe-area-inset-bottom)}
+.kabumaru-research :is(input,select){font-size:16px;min-height:44px;box-sizing:border-box}
+.kabumaru-research button{min-height:44px;touch-action:manipulation}
+.research-cards .card{content-visibility:auto;contain-intrinsic-size:auto 240px}
+@media(max-width:389px){.research-heading{gap:8px}.research-heading h1{font-size:1.25rem}.kabumaru-research .card{padding:12px}.research-heading img{max-width:56px}.research-controls{grid-template-columns:minmax(0,1fr)}}
+@media(max-height:500px){.research-heading{margin-bottom:8px}.research-heading img{max-height:48px}.kabumaru-research{padding-bottom:env(safe-area-inset-bottom)}}
