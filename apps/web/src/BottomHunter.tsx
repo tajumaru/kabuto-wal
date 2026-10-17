@@ -88,6 +88,7 @@ export function BottomHunter({ request }: { request: Request }) {
     const q = new URLSearchParams({ code: row.code, asOf: row.asOf });
     return <div className="hunter-actions">
       <button onClick={() => update("code", row.code)}>底打ち詳細を見る</button>
+      <Link to={`/research?${q}&jobId=${row.jobId}`}>かぶまるに研究してもらう</Link>
       <Link to={`/bottom?${q}`}>個別解析</Link>
       <Link to={`/similar?${q}&hunterJobId=${row.jobId}`}>デジャヴ相場を見る</Link>
       <button disabled={busy || !row.candidate} onClick={() => void act("/bottom/hunter/forecasts", { jobId: row.jobId, code: row.code, recordingMode })}>予測仮説を記録する</button>

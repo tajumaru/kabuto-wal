@@ -36,6 +36,7 @@ import { displayStockCode } from "./stock-search";
 import { Kabumaru } from "./Kabumaru";
 const DejavuResearch = lazy(() => import("./DejavuResearch").then(m => ({ default: m.DejavuResearch })));
 const BottomResearch = lazy(() => import("./BottomResearch").then(m => ({ default: m.BottomResearch })));
+const KabumaruResearch = lazy(() => import("./KabumaruResearch").then(m => ({ default: m.KabumaruResearch })));
 const BottomHunter = lazy(() => import("./BottomHunter").then(m => ({ default: m.BottomHunter })));
 import { HomeBrand } from "./HomeBrand";
 import { DailyFetch } from "./DailyFetch";
@@ -221,6 +222,7 @@ function App() {
             ["/similar", "類似相場", "similar"],
             ["/bottom", "底打ち研究", "bottom"],
             ["/bottom/hunter", "底打ちハンター", "hunter"],
+            ["/research", "かぶまる研究", "similar"],
             ["/predictions", "予測と検証", "predictions"],
             ["/memories", "記憶一覧", "memories"],
             ["/settings", "設定", "settings"],
@@ -274,6 +276,7 @@ function App() {
             <Route path="/similar" element={<Similar />} />
             <Route path="/bottom" element={<BottomResearch request={api} />} />
             <Route path="/bottom/hunter" element={<BottomHunter request={api} />} />
+            <Route path="/research" element={<KabumaruResearch request={api} />} />
             <Route path="/predictions" element={<Predictions />} />
             <Route path="/memories" element={<Memories />} />
             <Route path="/settings" element={<Settings />} />
