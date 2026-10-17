@@ -24,6 +24,8 @@ export function BottomHunter({ request }: { request: Request }) {
   }, []);
   const [recordingMode, setRecordingMode] = useState("research");
   const [message, setMessage] = useState(""), [busy, setBusy] = useState(false);
+  const [jobMessage, setJobMessage] = useState("");
+  const [jobError, setJobError] = useState(false);
   const [kind, setKind] = useState("scan"), [from, setFrom] = useState(""), [revision, setRevision] = useState(""), [external, setExternal] = useState(false);
   const parsed = hunterFilterSchema.safeParse(Object.fromEntries([...params].filter(([key, value]) => filterKeys.includes(key) && value !== "")));
   const query = new URLSearchParams(parsed.success ? Object.fromEntries(Object.entries(parsed.data).filter(([,v]) => v !== undefined).map(([k,v]) => [k,String(v)])) : {});
@@ -37,6 +39,7 @@ export function BottomHunter({ request }: { request: Request }) {
   const ranks = useQuery({ queryKey: ["hunter-rankings", queryString], enabled: parsed.success, staleTime: 30000,
     queryFn: async () => hunterRankingsSchema.parse(await request(`/bottom/hunter/rankings?${query}`)) });
   const selectedJob = params.get("jobId") || ranks.data?.coverage?.jobId;
+  const activeJob = status.data?.jobs.find(job => job.id === selectedJob);
   const detail = useQuery({ queryKey: ["hunter-detail", selectedJob, code], staleTime: 30000, enabled: !!selectedJob && /^[A-Z0-9]{5}$/.test(code),
     queryFn: async () => hunterDetailSchema.parse(await request(`/bottom/hunter/candidates/${code}?jobId=${selectedJob}`)) });
   const summaries = useQuery({ queryKey: ["hunter-evaluations"], enabled: showSummary, staleTime: 30000, queryFn: async () => hunterSummarySchema.parse(await request("/bottom/hunter/evaluations")) });
@@ -64,16 +67,22 @@ export function BottomHunter({ request }: { request: Request }) {
   const asOf = params.get("asOf") || coverage?.asOf || "";
   async function act(path: string, body: unknown) {
     setBusy(true); setMessage("");
+    const startingJob = path === "/bottom/hunter/jobs";
+    if (startingJob) { setJobError(false); setJobMessage("開始を受け付けています…"); }
     try {
       const result = await request(path, body);
       if (path === "/bottom/hunter/jobs") {
-        const job = hunterJobSchema.parse(result); update("jobId", job.id); setMessage("ジョブを開始しました。進捗はJSONに保存されます。");
+        const job = hunterJobSchema.parse(result); update("jobId", job.id); setJobMessage("開始しました。この下に進捗を表示します。");
       } else if (path === "/bottom/hunter/forecasts") {
         const saved = hunterForecastResponseSchema.parse(result);
         setMessage(`${saved.records.length}件の研究仮説を記録しました。${saved.note}`);
       } else setMessage("操作を受け付けました。");
       await Promise.all([client.invalidateQueries({ queryKey: ["hunter-status"] }), client.invalidateQueries({ queryKey: ["/watchlist"] }), client.invalidateQueries({ queryKey: ["hunter-evaluations"] })]);
-    } catch (e) { setMessage(e instanceof Error ? e.message : "通信に失敗しました"); } finally { setBusy(false); }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : "通信に失敗しました";
+      if (startingJob) { setJobError(true); setJobMessage(error); }
+      else setMessage(error);
+    } finally { setBusy(false); }
   }
   function actions(row: HunterRow) {
     const q = new URLSearchParams({ code: row.code, asOf: row.asOf });
@@ -98,11 +107,15 @@ export function BottomHunter({ request }: { request: Request }) {
     </div>
     <details className="card"><summary>取得・走査ジョブを明示的に開始</summary>
       <p>走査は保存済みJSONのみを使います。初回取得・差分更新・訂正取得はJ-Quantsへ接続します。起動時の自動取得はありません。</p>
+      <p>基準日：{asOf || "未指定（下の「基準日」を入力してください）"}。取得可能な営業日を指定してください。</p>
+      {asOf && [0, 6].includes(new Date(`${asOf}T00:00:00Z`).getUTCDay()) && <p role="note">指定日は土日です。データを取得できる直前の営業日に変更してください。</p>}
       <label>ジョブ種別<select value={kind} onChange={e => setKind(e.target.value)}><option value="scan">保存済みデータを走査</option><option value="initial">初回取得</option><option value="update">差分更新</option><option value="correction">直近5営業日の訂正取得</option></select></label>
       <label>取得開始日<input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label>
       <label>訂正revision<input value={revision} onChange={e => setRevision(e.target.value)} placeholder="correction-20261017" /></label>
       <label><input type="checkbox" checked={external} onChange={e => setExternal(e.target.checked)} />J-Quantsへの実接続を許可して開始する</label>
-      <button disabled={busy || !asOf || !parsed.success || (kind !== "scan" && status.data?.mode !== "demo" && !external)} onClick={() => void act("/bottom/hunter/jobs", { kind, asOf, ...(from ? { from } : {}), ...(revision ? { revision } : {}), confirmExternal: external })}>ジョブを開始</button>
+      <button disabled={busy || !asOf || !parsed.success || (kind !== "scan" && status.data?.mode !== "demo" && !external)} onClick={() => void act("/bottom/hunter/jobs", { kind, asOf, ...(from ? { from } : {}), ...(revision ? { revision } : {}), confirmExternal: external })}>{busy ? "処理中…" : "ジョブを開始"}</button>
+      {jobMessage && <p role={jobError ? "alert" : "status"} className={jobError ? "error" : undefined}>{jobMessage}</p>}
+      {activeJob && <div aria-live="polite"><p>状態：{({ queued: "開始待ち", running: "実行中", paused: "一時停止", cancelled: "中止", failed: "失敗", completed: "完了" })[activeJob.status]} ／ {activeJob.processed} / {activeJob.total}銘柄</p>{activeJob.error && <p role="alert" className="error">{activeJob.error}</p>}</div>}
     </details>
     <div className="hunter-filters card">
       <label>基準日<input type="date" value={params.get("asOf") ?? ""} onChange={e => update("asOf", e.target.value)} /></label>
