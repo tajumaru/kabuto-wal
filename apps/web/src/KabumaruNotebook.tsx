@@ -32,7 +32,7 @@ export function KabumaruNotebook({request}:{request:Request}){
   }
   const original=note.data?.view;
   return <section className="kabumaru-notebook" onClick={event=>{const anchor=(event.target as Element).closest('a[href^="#notebook-evidence-"]');if(!anchor)return;const target=document.getElementById(anchor.getAttribute("href")!.slice(1));if(!target)return;event.preventDefault();let parent:HTMLElement|null=target;while(parent){if(parent instanceof HTMLDetailsElement)parent.open=true;parent=parent.parentElement;}target.scrollIntoView({block:"start"});}}><header className="notebook-heading"><KabumaruPortrait pose="analyze"/><div><h1>かぶまる研究ノート</h1><p>候補と非候補を同じ時点で固定し、事実と仮説を分けて振り返るよ。</p></div></header>
-    <Link to="/research">かぶまるAI研究員へ</Link>
+    <Link to="/research">かぶまるAI研究員へ</Link><Link to="/research/lab">底打ちアルゴリズム実験室へ</Link>
     <section className="card"><h2>固定コホート</h2><p>明示操作で作成します。J-Quantsへの追加取得はありません。</p>
       <label>完了済み分析ジョブ<select value={jobId} onChange={e=>setJob(e.target.value)}><option value="">選択してください</option>{status.data?.jobs.filter(j=>j.status==="completed").map(j=><option key={j.id} value={j.id}>{j.input.asOf} · {j.mode} · {j.id.slice(0,8)}</option>)}</select></label>
       <label>研究区分<select value={experiment} onChange={e=>setExperiment(e.target.value)}><option value="retrospective">過去研究</option><option value="prospective">実運用の事前記録（当日のみ）</option><option value="walk-forward">walk-forward</option></select></label>

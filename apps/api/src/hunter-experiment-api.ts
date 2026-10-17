@@ -1,0 +1,30 @@
+import { z } from "zod";
+import type { FastifyInstance } from "fastify";
+import type { Service } from "./service";
+import { cohortIdSchema } from "../../../packages/core/hunter-cohort-schema";
+import { BOTTOM_CONFIG } from "../../../packages/core/bottom-score";
+import { labFeatures,labMethodSchema,labRunSchema } from "../../../packages/core/hunter-experiment-schema";
+import { labBase,createLabMethod,readLabMethod,labEvents,changeLabState,readLabPlan } from "./hunter-experiment";
+import { createLabPlan,selectLabMethod } from "./hunter-experiment-temporal";
+import { generateLabHypothesis } from "./hunter-experiment-hypotheses";
+import { createLabRun,runLabExperiment,controlLabRun,readLabRun,labRunKey } from "./hunter-experiment-runner";
+import { readLabReport } from "./hunter-experiment-report";
+const pageSchema=z.object({page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(50).default(20)});
+const paramsSchema=z.object({id:cohortIdSchema});
+export function registerHunterLab(app:FastifyInstance,s:Service){
+  const start=(id:string)=>{void runLabExperiment(s,id).catch(async()=>{await s.store.lock(async()=>{const j=await readLabRun(s,id);if(j.status==="queued")await s.store.write(labRunKey(id),{...j,status:"failed",error:"入力の再検証に失敗しました"});});});};
+  app.get("/api/research/lab",async()=>({current:BOTTOM_CONFIG,features:labFeatures,note:"現行候補判定の流動性・リスク条件は維持。本番方式の切替は実装しません。"}));
+  app.get("/api/research/lab/methods",async req=>{const q=pageSchema.parse(req.query),files=(await s.store.files(`${labBase}/methods`)).filter(f=>/^research\/lab\/methods\/[a-f0-9]{64}\/original.json$/.test(f)).sort().reverse(),records=[];for(const file of files.slice((q.page-1)*q.pageSize,q.page*q.pageSize)){const m=labMethodSchema.parse(await s.store.read(file));await readLabMethod(s,m.experimentId);records.push({...m,status:(await labEvents(s,m.experimentId)).at(-1)?.status??"draft"});}return {records,total:files.length,...q};});
+  app.post("/api/research/lab/methods",async req=>{const q=z.object({method:z.unknown(),confirm:z.literal(true)}).strict().parse(req.body);return createLabMethod(s,q.method);});
+  app.get("/api/research/lab/methods/:id",async req=>{const {id}=paramsSchema.parse(req.params);return {method:await readLabMethod(s,id),events:await labEvents(s,id)};});
+  app.post("/api/research/lab/methods/:id/state",async req=>changeLabState(s,paramsSchema.parse(req.params).id,req.body));
+  app.post("/api/research/lab/hypotheses",async req=>generateLabHypothesis(s,req.body));
+  app.post("/api/research/lab/plans",async req=>createLabPlan(s,req.body));
+  app.get("/api/research/lab/plans",async req=>{const q=pageSchema.parse(req.query),files=(await s.store.files(`${labBase}/plans`)).filter(f=>/^research\/lab\/plans\/[a-f0-9]{64}\/original.json$/.test(f)).sort().reverse(),records=[];for(const f of files.slice((q.page-1)*q.pageSize,q.page*q.pageSize)){const p=await readLabPlan(s,f.split("/").at(-2)!);records.push({planId:p.planId,createdAt:p.createdAt,training:p.training,validation:p.validation,test:p.test,partitions:p.partitions,purgeReasons:p.purgeReasons,embargoSessions:p.embargoSessions});}return {records,total:files.length,...q};});
+  app.post("/api/research/lab/plans/:id/select",async req=>{const q=z.object({experimentId:cohortIdSchema,confirm:z.literal(true)}).strict().parse(req.body);return selectLabMethod(s,paramsSchema.parse(req.params).id,q.experimentId,q.confirm);});
+  app.post("/api/research/lab/runs",async req=>{const j=await createLabRun(s,req.body);start(j.runId);return j;});
+  app.get("/api/research/lab/runs",async req=>{const q=pageSchema.parse(req.query),files=(await s.store.files(`${labBase}/runs`)).filter(f=>f.endsWith("/checkpoint.json")).sort().reverse();const records=await Promise.all(files.slice((q.page-1)*q.pageSize,q.page*q.pageSize).map(f=>s.store.read(f).then(r=>labRunSchema.parse(r))));return {records,total:files.length,...q};});
+  app.get("/api/research/lab/runs/:id",async req=>readLabRun(s,paramsSchema.parse(req.params).id));
+  app.post("/api/research/lab/runs/:id/control",async req=>{const {id}=paramsSchema.parse(req.params),q=z.object({action:z.enum(["pause","cancel","resume"])}).strict().parse(req.body),j=await controlLabRun(s,id,q.action);if(q.action==="resume")start(id);return j;});
+  app.get("/api/research/lab/runs/:id/report",async req=>readLabReport(s,paramsSchema.parse(req.params).id));
+}

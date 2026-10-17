@@ -21,6 +21,6 @@ export async function runResearchJob(s:Service,key:string,unit:(index:number)=>P
     const current=researchCheckpointSchema.parse(await s.store.read(key));if(current.lease?.token!==token)throw Error("workerの所有権が変更されました");if(current.status!=="running"){job=current;break;}
     await unit(current.processed);
     job=await s.store.lock(async()=>{const j=researchCheckpointSchema.parse(await s.store.read(key));if(j.lease?.token!==token)throw Error("workerの所有権不一致");j.processed++;j.lease.expiresAt=Date.now()+30*60*1000;await s.store.write(key,j);await s.store.write(activeKey,{key,lease:j.lease});return j;});units++;
-  }}catch(e){job=await s.store.lock(async()=>{const j=researchCheckpointSchema.parse(await s.store.read(key));if(j.lease?.token===token){j.status="failed";j.failed++;j.error=e instanceof Error?e.message:"計算失敗";await s.store.write(key,j);}return j;});}
+  }}catch(e){await s.store.lock(async()=>{const j=researchCheckpointSchema.parse(await s.store.read(key));if(j.lease?.token===token){j.status="failed";j.failed++;j.error=e instanceof Error?e.message:"計算失敗";await s.store.write(key,j);}return j;});}
   return s.store.lock(async()=>{const j=researchCheckpointSchema.parse(await s.store.read(key));if(j.lease?.token!==token)return j;if(j.status==="running")j.status=j.processed===j.total?"completed":"paused";delete j.lease;await s.store.write(key,j);const a=await s.store.read<{lease?:{token:string}}>(activeKey,{});if(a.lease?.token===token)await s.store.write(activeKey,{released:true});return j;});
 }

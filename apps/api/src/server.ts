@@ -1,6 +1,7 @@
 import { registerKabumaruResearch } from "./kabumaru-research";
 import { registerHunterCohorts } from "./hunter-cohort";
 import { registerKabumaruNotebook } from "./kabumaru-notebook";
+import { registerHunterLab } from "./hunter-experiment-api";
 import { searchDejavuContext } from "./hunter-research";
 import { notifyDejavu, saveDejavu, recallDejavu } from "./dejavu";
 import { registerDejavuJournal } from "./dejavu-journal";
@@ -101,6 +102,7 @@ export async function createApp(
   registerKabumaruResearch(app, service);
   registerHunterCohorts(app, service);
   registerKabumaruNotebook(app, service);
+  registerHunterLab(app, service);
   app.get("/api/auth/challenge", async () =>
     service.store.lock(async () => {
       const nonce = randomBytes(32).toString("hex"),
