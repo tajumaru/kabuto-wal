@@ -7,6 +7,20 @@ import { demoBars } from "../fixtures/demo";
 import { HunterJobs } from "../apps/api/src/hunter-jobs";
 import { analyzeBottom } from "../apps/api/src/bottom";
 
+it("終了したプロセスの実行中記録を一時停止に戻し再開可能にする", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "hunter-recovery-"));
+  const service = new Service(dir, "demo", false);
+  try {
+    await service.init();
+    const engine = new HunterJobs(service);
+    const job = await engine.create({ asOf: "2026-10-09" });
+    await service.store.write(`market/hunter/jobs/${job.id}.json`, { ...job, status: "running", lease: { token: "old", pid: process.pid, expiresAt: 0 } });
+    expect((await engine.list())[0]).toMatchObject({ status: "paused", error: expect.stringContaining("再開") });
+    await engine.resume(job.id);
+    expect((await engine.run(job.id)).status).toBe("completed");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 it("0件・1件・複数銘柄の銘柄別再開、同時起動抑止、個別判定との一致", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "hunter-jobs-"));
   const service = new Service(dir, "demo", false);

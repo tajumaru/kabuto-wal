@@ -6,6 +6,7 @@ import { classifyBottom, compareHunterRows } from "../../../packages/core/hunter
 import { hash } from "../../../packages/integrations/adjusted-series";
 import { MarketIngestion } from "../../../packages/integrations/market-ingestion";
 import { JQuants } from "../../../packages/integrations/jquants";
+import { RequestDeferred } from "../../../packages/integrations/jquants-limiter";
 import { dataWindow, planCapabilities } from "../../../packages/integrations/jquants-plan";
 import { buildHunterUniverse } from "./hunter-universe";
 import { buildHunterIndex, readHunterObservations, hunterShard, hunterShardReader, type HunterIndex } from "./hunter-index";
@@ -26,7 +27,19 @@ export class HunterJobs {
   async list() {
     const files = (await this.service.store.files(`${base}/jobs`)).filter(f => f.endsWith(".json"));
     const jobs = [];
-    for (const file of files) jobs.push(hunterJobSchema.parse(await this.service.store.read(file)));
+    for (const file of files) {
+      let job = hunterJobSchema.parse(await this.service.store.read(file));
+      if (job.status === "running" && job.lease && !this.alive(job.lease)) {
+        job = await this.service.store.lock(async () => {
+          const current = await this.get(job.id);
+          if (current.status !== "running" || !current.lease || this.alive(current.lease)) return current;
+          const paused = { ...current, status: "paused" as const, lease: undefined, error: "前回の取得・分析が中断しました。「再開」で保存済みの続きから処理できます。" };
+          await this.service.store.write(jobKey(current.id), paused);
+          return paused;
+        });
+      }
+      jobs.push(job);
+    }
     return jobs.sort((a,b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 10);
   }
   async create(raw: unknown) {
@@ -168,7 +181,7 @@ export class HunterJobs {
     } catch (error) {
       if (job?.lease) {
         const current = await this.get(id);
-        if (current.lease?.token === job.lease.token) await this.patch(id, job.lease.token, { status: current.cancelRequested ? "cancelled" : "failed", error: error instanceof Error ? error.message : "走査に失敗しました", lease: undefined });
+        if (current.lease?.token === job.lease.token) await this.patch(id, job.lease.token, { status: current.cancelRequested ? "cancelled" : error instanceof RequestDeferred ? "paused" : "failed", error: error instanceof Error ? error.message : "走査に失敗しました", lease: undefined });
       }
       throw error;
     } finally { this.running.delete(id); }
@@ -240,6 +253,7 @@ export class HunterJobs {
     if (this.service.mode === "demo") return;
     if (!job.input.confirmExternal) throw Error("実データ取得の明示確認が必要です");
     const provider = this.providerFactory(), from = job.input.from!, asOf = job.input.asOf;
+    await this.patch(job.id, job.lease!.token, { acquisition: { completed: 0, total: 0 } });
     const days = await provider.calendar(from, asOf);
     await this.service.store.lock(async () => {
       const merged = new Map((await this.service.store.read<Calendar>("market/calendar.json", [])).map(d => [d.date, d]));
@@ -249,10 +263,13 @@ export class HunterJobs {
     const ingestion = new MarketIngestion(this.service.store, provider, process.env.JQUANTS_PLAN || "Free", this.now, cancelled);
     const selected = days.filter(d => d.open).sort((a,b) => a.date.localeCompare(b.date));
     if (!selected.some(d => d.date === asOf)) throw Error("基準日は営業日ではありません");
-    for (const day of (job.input.kind === "correction" ? selected.slice(-5) : selected)) {
+    const targets = job.input.kind === "correction" ? selected.slice(-5) : selected;
+    let completed = 0;
+    for (const day of targets) {
       if (await cancelled()) throw Error("取得をキャンセルしました");
+      await this.patch(job.id, job.lease!.token, { acquisition: { completed, total: targets.length, date: day.date } });
       await ingestion.ingestDate(day.date, job.input.kind === "correction" ? job.input.revision! : "initial");
-      await this.patch(job.id, job.lease!.token, {});
+      await this.patch(job.id, job.lease!.token, { acquisition: { completed: ++completed, total: targets.length, date: day.date } });
     }
   }
 }

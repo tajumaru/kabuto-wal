@@ -56,6 +56,7 @@ export const hunterJobSchema = z.object({
   cancelRequested: z.boolean(), processed: z.number().int(), total: z.number().int(),
   universeId: z.string().optional(), datasetId: z.string().optional(), analysisId: z.string().optional(), error: z.string().optional(),
   lease: z.object({ token: z.string(), pid: z.number(), expiresAt: z.number() }).optional(),
+  acquisition: z.object({ completed: z.number().int(), total: z.number().int(), date: z.string().optional() }).optional(),
 });
 export const hunterFilterSchema = z.object({
   jobId: z.string().uuid().optional(), asOf: z.string().date().optional(),
@@ -71,12 +72,18 @@ export const hunterRankingsSchema = z.object({
 export const hunterDetailSchema = z.object({ row: hunterRowSchema, analysis: bottomAnalysisSchema, explanation: z.string(), dejavu: dejavuResultSchema.nullable(), dejavuWarning: z.string().optional() });
 export const hunterStatusSchema = z.object({ mode: z.enum(["demo", "research"]), plan: z.string(), delayDays: z.number(),
   jobs: z.array(hunterJobSchema), coverage: hunterCoverageSchema.nullable(),
+  suggestedAsOf: z.string().optional(), suggestedFrom: z.string().optional(),
 });
 export type HunterJob = z.infer<typeof hunterJobSchema>;
 export type HunterRow = z.infer<typeof hunterRowSchema>;
 export type HunterCoverage = z.infer<typeof hunterCoverageSchema>;
 export type HunterUniverse = z.infer<typeof hunterUniverseSchema>;
 export type HunterFilter = z.infer<typeof hunterFilterSchema>;
+export const hunterPreflightSchema = z.object({
+  plan: z.string(), windowFrom: z.string(), windowTo: z.string(), limit: z.number(), rpm: z.number(),
+  sessions: z.number(), cachedDays: z.number(), minimumRequests: z.number(), minimumSeconds: z.number(),
+  waitSeconds: z.number(), errors: z.array(z.string()), warnings: z.array(z.string()),
+});
 export const hunterForecastResponseSchema = z.object({ records: z.array(predictionSchema), note: z.string() });
 export const hunterSummarySchema = z.object({ groups: z.array(z.object({
   key: z.string(), total: z.number(), pending: z.number(), available: z.number(), evaluated: z.number(),

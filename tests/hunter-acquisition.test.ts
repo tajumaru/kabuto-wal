@@ -22,6 +22,7 @@ it("取得失敗のcheckpointを保持して再開し、別ジョブの同時取
     expect(await service.store.read(`market/ingestion/${date}/initial/checkpoint.json`)).toMatchObject({ status: "partial", error: expect.any(String) });
     await engine.resume(job.id); await engine.run(job.id);
     expect((await engine.get(job.id)).status).toBe("completed");
+    expect((await engine.get(job.id)).acquisition).toEqual({ completed: 1, total: 1, date });
     expect(page).toHaveBeenCalledTimes(2);
     let release!: () => void, entered!: () => void;
     const gate = new Promise<void>(r => { release = r; }), ready = new Promise<void>(r => { entered = r; });
