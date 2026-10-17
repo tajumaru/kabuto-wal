@@ -1,3 +1,4 @@
+import { researchTarget, researchPost, resolveResearchHost, pinnedResearchTransport, type Resolver, type ResearchTransport } from "./research-network";
 import { researchInputSchema, researchResultSchema, type ResearchEvidence, type ResearchExplanation, type ResearchResult } from "../../../packages/core/kabumaru-research-schema";
 import { deterministicResearch, validateResearchExplanation } from "./kabumaru-explanation";
 import { verifyEvidence } from "./kabumaru-evidence";
@@ -24,17 +25,14 @@ export function externalResearchPayload(evidence: ResearchEvidence[], instructio
   };
 }
 export class ConfiguredResearchLlm implements ResearchLLMProvider {
-  constructor(private url: string, private key = "", private fetcher: typeof fetch = fetch) {
-    const target = new URL(url);
-    if (target.protocol !== "https:" || target.username || target.password || target.search || target.hash) throw Error("LLM接続先は認証情報を含まないHTTPS URLで指定してください");
+  private target: URL;
+  constructor(url: string, private key = "", private resolver: Resolver = resolveResearchHost, private transport: ResearchTransport = pinnedResearchTransport) {
+    this.target = researchTarget(url, (process.env.RESEARCH_LLM_ALLOWED_HOSTS ?? "").split(",").map(h => h.trim().toLowerCase()).filter(Boolean));
   }
   async generateExplanation(evidence: ResearchEvidence[], instruction: string) {
     const payload = externalResearchPayload(evidence, instruction);
-    const response = await this.fetcher(this.url, { method: "POST", headers: { "Content-Type": "application/json", ...(this.key ? { Authorization: `Bearer ${this.key}` } : {}) },
-      signal: AbortSignal.timeout(2000), redirect: "error", body: JSON.stringify(payload) });
-    if (!response.ok) throw Error("研究LLMの応答エラー");
-    const text = await response.text();
-    if (text.length > 200000) throw Error("研究LLMの応答上限");
+    const text = await researchPost(this.target, this.key, JSON.stringify(payload), this.resolver, this.transport);
+    if (Buffer.byteLength(text) > 200000) throw Error("研究LLMの応答上限");
     return validateResearchExplanation(JSON.parse(text), payload.catalog);
   }
 }
