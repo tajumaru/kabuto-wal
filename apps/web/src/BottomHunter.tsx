@@ -1,36 +1,59 @@
-import { DejavuResearch } from "./DejavuResearch";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { hunterForecastResponseSchema, hunterSummarySchema, hunterCategory, hunterDetailSchema, hunterFilterSchema, hunterJobSchema, hunterRankingsSchema, hunterStatusSchema, type HunterRow } from "../../../packages/core/hunter-schema";
 import { KabumaruPortrait } from "./Kabumaru";
 import { displayStockCode } from "./stock-search";
-import { HunterPriceChart } from "./HunterPriceChart";
+const HunterPriceChart = lazy(() => import("./HunterPriceChart").then(m => ({ default: m.HunterPriceChart })));
+const DejavuResearch = lazy(() => import("./DejavuResearch").then(m => ({ default: m.DejavuResearch })));
 
 type Request = (url: string, body?: unknown) => Promise<unknown>;
 const number = (n: number | null | undefined, percent = false) => n == null ? "—" : `${(n * (percent ? 100 : 1)).toLocaleString("ja-JP", { maximumFractionDigits: 2 })}${percent ? "%" : ""}`;
 const filterKeys = ["jobId", "asOf", "market", "minScore", "rsiMin", "rsiMax", "maxDrawdown", "liquidity", "category", "risk", "page", "pageSize"];
 export function BottomHunter({ request }: { request: Request }) {
   const [params, setParams] = useSearchParams(), client = useQueryClient();
+  const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 700px)").matches);
+  const [showSummary, setShowSummary] = useState(false);
+  const restored = useRef("");
+  const previousCompletion = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 700px)");
+    const update = () => setMobile(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
   const [recordingMode, setRecordingMode] = useState("research");
   const [message, setMessage] = useState(""), [busy, setBusy] = useState(false);
   const [kind, setKind] = useState("scan"), [from, setFrom] = useState(""), [revision, setRevision] = useState(""), [external, setExternal] = useState(false);
   const parsed = hunterFilterSchema.safeParse(Object.fromEntries([...params].filter(([key, value]) => filterKeys.includes(key) && value !== "")));
   const query = new URLSearchParams(parsed.success ? Object.fromEntries(Object.entries(parsed.data).filter(([,v]) => v !== undefined).map(([k,v]) => [k,String(v)])) : {});
+  const queryString = query.toString();
   const code = params.get("code") ?? "";
   function update(key: string, value: string) {
     setParams(current => { const next = new URLSearchParams(current); if (value) next.set(key, value); else next.delete(key); if (key !== "page" && key !== "code") next.delete("page"); if (key === "asOf") { next.delete("jobId"); next.delete("code"); } return next; });
   }
   const status = useQuery({ queryKey: ["hunter-status"], queryFn: async () => hunterStatusSchema.parse(await request("/bottom/hunter/status")),
     refetchInterval: q => q.state.data?.jobs.some(j => j.status === "queued" || j.status === "running") ? 2000 : false });
-  const ranks = useQuery({ queryKey: ["hunter-rankings", query.toString()], enabled: parsed.success,
+  const ranks = useQuery({ queryKey: ["hunter-rankings", queryString], enabled: parsed.success, staleTime: 30000,
     queryFn: async () => hunterRankingsSchema.parse(await request(`/bottom/hunter/rankings?${query}`)) });
   const selectedJob = params.get("jobId") || ranks.data?.coverage?.jobId;
-  const detail = useQuery({ queryKey: ["hunter-detail", selectedJob, code], enabled: !!selectedJob && /^[A-Z0-9]{5}$/.test(code),
+  const detail = useQuery({ queryKey: ["hunter-detail", selectedJob, code], staleTime: 30000, enabled: !!selectedJob && /^[A-Z0-9]{5}$/.test(code),
     queryFn: async () => hunterDetailSchema.parse(await request(`/bottom/hunter/candidates/${code}?jobId=${selectedJob}`)) });
-  const summaries = useQuery({ queryKey: ["hunter-evaluations"], queryFn: async () => hunterSummarySchema.parse(await request("/bottom/hunter/evaluations")) });
+  const summaries = useQuery({ queryKey: ["hunter-evaluations"], enabled: showSummary, staleTime: 30000, queryFn: async () => hunterSummarySchema.parse(await request("/bottom/hunter/evaluations")) });
   const completion = status.data?.jobs.map(j => `${j.id}:${j.status}:${j.processed}`).join(",");
-  useEffect(() => { void client.invalidateQueries({ queryKey: ["hunter-rankings"] }); }, [completion, client]);
+  useEffect(() => {
+    if (previousCompletion.current !== undefined && previousCompletion.current !== completion)
+      void client.invalidateQueries({ queryKey: ["hunter-rankings"] });
+    previousCompletion.current = completion;
+  }, [completion, client]);
+  useEffect(() => {
+    if (!ranks.data) return;
+    const key = `hunter-scroll:${queryString}`;
+    if (restored.current !== key) { window.scrollTo(0, Number(sessionStorage.getItem(key) || 0)); restored.current = key; }
+    const save = () => sessionStorage.setItem(key, String(window.scrollY));
+    window.addEventListener("scroll", save, { passive: true });
+    return () => window.removeEventListener("scroll", save);
+  }, [queryString, ranks.data]);
   const coverage = ranks.data?.coverage;
   const asOf = params.get("asOf") || coverage?.asOf || "";
   async function act(path: string, body: unknown) {
@@ -88,13 +111,15 @@ export function BottomHunter({ request }: { request: Request }) {
     </div>
     <label>予測記録の区分<select value={recordingMode} onChange={e => setRecordingMode(e.target.value)}><option value="research">過去研究（後から作成した仮説）</option><option value="live">実運用（当日作成のみ）</option></select></label>
     <h2>ランキング（{ranks.data?.total ?? 0}件）</h2>
-    {!ranks.data?.rows.length && <p>この条件の走査済み結果はありません。基準日を指定してジョブを開始してください。</p>}
-    <div className="hunter-desktop"><table><thead><tr><th>順位・銘柄・市場</th><th>点数・分類</th><th>RSI・下落率・出来高倍率</th><th>平均売買代金</th><th>根拠・リスク・取得状態</th><th>操作</th></tr></thead><tbody>{ranks.data?.rows.map(r => <tr key={r.code}><td>{r.rank} · {displayStockCode(r.code)} {r.name}<br />{r.marketName} · {r.asOf}</td><td>{r.score ?? "—"}点<br />{r.category}{r.candidate ? " · 候補" : ""}</td><td>{number(r.rsi)} ／ {number(r.drawdown,true)} ／ {number(r.volumeRatio)}</td><td>{number(r.averageTurnover20)}円</td><td>{r.reasons.slice(0,3).join("、")}<br />{r.risks.join("、") || "追加リスクなし"}<br />{r.acquisitionStatus} · {r.continuousSessions}営業日</td><td>{actions(r)}</td></tr>)}</tbody></table></div>
-    <div className="hunter-mobile">{ranks.data?.rows.map(r => <article className="card" key={r.code}><h3>{r.rank} · {displayStockCode(r.code)} {r.name}</h3><p>{r.marketName} · {r.asOf} ／ {r.score ?? "—"}点 · {r.category}</p><p>RSI {number(r.rsi)} ／ 下落 {number(r.drawdown,true)} ／ 出来高 {number(r.volumeRatio)}倍 ／ 売買代金 {number(r.averageTurnover20)}円</p><p>{r.reasons.slice(0,3).join("、")}</p><p>{r.risks.join("、")} · {r.acquisitionStatus} · {r.continuousSessions}営業日</p>{actions(r)}</article>)}</div>
+    {ranks.isLoading && <p role="status">ランキングを読み込み中…</p>}
+    {!ranks.isLoading && !ranks.error && !ranks.data?.rows.length && <p>この条件の走査済み結果はありません。基準日を指定してジョブを開始してください。</p>}
+    {!mobile && <div className="hunter-desktop"><table><thead><tr><th>順位・銘柄・市場</th><th>点数・分類</th><th>RSI・下落率・出来高倍率</th><th>平均売買代金</th><th>根拠・リスク・取得状態</th><th>操作</th></tr></thead><tbody>{ranks.data?.rows.map(r => <tr key={r.code}><td>{r.rank} · {displayStockCode(r.code)} {r.name}<br />{r.marketName} · {r.asOf}</td><td>{r.score ?? "—"}点<br />{r.category}{r.candidate ? " · 候補" : ""}</td><td>{number(r.rsi)} ／ {number(r.drawdown,true)} ／ {number(r.volumeRatio)}</td><td>{number(r.averageTurnover20)}円</td><td>{r.reasons.slice(0,3).join("、")}<br />{r.risks.join("、") || "追加リスクなし"}<br />{r.acquisitionStatus} · {r.continuousSessions}営業日</td><td>{actions(r)}</td></tr>)}</tbody></table></div>}
+    {mobile && <div className="hunter-mobile">{ranks.data?.rows.map(r => <article className="card" key={r.code}><h3>{r.rank} · {displayStockCode(r.code)} {r.name}</h3><p>{r.marketName} · {r.asOf} ／ {r.score ?? "—"}点 · {r.category}</p><p>RSI {number(r.rsi)} ／ 下落 {number(r.drawdown,true)} ／ 出来高 {number(r.volumeRatio)}倍 ／ 売買代金 {number(r.averageTurnover20)}円</p><p>{r.reasons.slice(0,3).join("、")}</p><p>{r.risks.join("、")} · {r.acquisitionStatus} · {r.continuousSessions}営業日</p>{actions(r)}</article>)}</div>}
     <div className="toolbar"><button disabled={!parsed.success || (parsed.data.page ?? 1) <= 1} onClick={() => update("page", String((parsed.success ? parsed.data.page : 1)-1))}>前のページ</button><span>{parsed.success ? parsed.data.page : "—"}ページ</span><button disabled={!ranks.data || ranks.data.page*ranks.data.pageSize >= ranks.data.total} onClick={() => update("page", String((parsed.success ? parsed.data.page : 1)+1))}>次のページ</button></div>
     {detail.error && <p role="alert">{detail.error.message}</p>}
-    {detail.data && <article className="card hunter-detail"><h2>{detail.data.row.name} 底打ち詳細</h2><p>{detail.data.explanation}</p><p>{detail.data.analysis.score ?? "—"}点 ／ {detail.data.row.category}</p><HunterPriceChart chart={detail.data.analysis.chart} /><ul>{detail.data.analysis.conditions.map(c => <li key={c.code}>{c.met ? "一致" : "未一致"} · {c.label} · {c.earnedPoints}/{c.maxPoints}点</li>)}</ul><p>リスク：{detail.data.analysis.riskCodes.join("、")}</p><p>{detail.data.dejavuWarning}</p>{detail.data.dejavu && <DejavuResearch data={detail.data.dejavu} code={detail.data.row.code} date={detail.data.row.asOf} compare="" hunterJobId={detail.data.row.jobId} request={request} memories={<p>ハンターの予測原本・反省は研究ジャーナルに保存します。</p>} />}</article>}
-    <section className="card"><h2>研究仮説の結果検証</h2><p>実運用・過去研究・walk-forwardは別集計です。方向一致率は将来の的中確率ではありません。</p><button disabled={busy} onClick={() => void act("/bottom/hunter/evaluations", {})}>期限後の結果を検証</button>{summaries.error && <p role="alert">{summaries.error.message}</p>}{summaries.data?.groups.map(g => <article key={g.key}><p>{g.mode} ／ {g.experiment} ／ {g.horizon}営業日 ／ {g.classification} ／ {g.band}点 ／ 基準月 {g.period}</p>{g.lowSample && <strong>少数標本：評価済み20件未満で信頼性は低い集計です。</strong>}<p>未評価 {g.pending} ／ 評価可能（評価済み含む） {g.eligible ?? g.available} ／ 評価済み {g.evaluated} ／ 方向一致 {number(g.directionRate,true)} ／ 実現騰落率 {number(g.meanReturn,true)} ／ 実現中央値 {number(g.medianReturn,true)} ／ 上昇割合 {number(g.upRatio,true)} ／ 予測中央値との差 {number(g.meanError,true)} ／ 絶対誤差 {number(g.meanAbsoluteError,true)} ／ 最悪最大下落 {number(g.worstDrawdown,true)} ／ 下落分布25%・中央値・75% {number(g.drawdownDistribution?.p25,true)}・{number(g.drawdownDistribution?.median,true)}・{number(g.drawdownDistribution?.p75,true)}（{g.drawdownCount ?? 0}件）</p></article>)}</section>
+    {detail.isFetching && <p role="status">詳細を読み込み中…</p>}
+    {detail.data && <Suspense fallback={<p role="status">チャート・研究画面を読み込み中…</p>}><article className="card hunter-detail"><h2>{detail.data.row.name} 底打ち詳細</h2><p>{detail.data.explanation}</p><p>{detail.data.analysis.score ?? "—"}点 ／ {detail.data.row.category}</p><HunterPriceChart chart={detail.data.analysis.chart} /><ul>{detail.data.analysis.conditions.map(c => <li key={c.code}>{c.met ? "一致" : "未一致"} · {c.label} · {c.earnedPoints}/{c.maxPoints}点</li>)}</ul><p>リスク：{detail.data.analysis.riskCodes.join("、")}</p><p>{detail.data.dejavuWarning}</p>{detail.data.dejavu && <DejavuResearch data={detail.data.dejavu} code={detail.data.row.code} date={detail.data.row.asOf} compare="" hunterJobId={detail.data.row.jobId} request={request} memories={<p>ハンターの予測原本・反省は研究ジャーナルに保存します。</p>} />}</article></Suspense>}
+    <section className="card"><h2>研究仮説の結果検証</h2><p>実運用・過去研究・walk-forwardは別集計です。方向一致率は将来の的中確率ではありません。</p><button aria-expanded={showSummary} onClick={() => setShowSummary(!showSummary)}>成績集計を{showSummary ? "閉じる" : "表示"}</button>{showSummary && summaries.isLoading && <p role="status">成績を集計中…</p>}<button disabled={busy} onClick={() => void act("/bottom/hunter/evaluations", {})}>期限後の結果を検証</button>{summaries.error && <p role="alert">{summaries.error.message}</p>}{showSummary && summaries.data?.groups.length === 0 && <p>評価対象の予測記録がありません。</p>}{showSummary && summaries.data?.groups.map(g => <article key={g.key}><p>{g.mode} ／ {g.experiment} ／ {g.horizon}営業日 ／ {g.classification} ／ {g.band}点 ／ 基準月 {g.period}</p>{g.lowSample && <strong>少数標本：評価済み20件未満で信頼性は低い集計です。</strong>}<p>未評価 {g.pending} ／ 評価可能（評価済み含む） {g.eligible ?? g.available} ／ 評価済み {g.evaluated} ／ 方向一致 {number(g.directionRate,true)} ／ 実現騰落率 {number(g.meanReturn,true)} ／ 実現中央値 {number(g.medianReturn,true)} ／ 上昇割合 {number(g.upRatio,true)} ／ 予測中央値との差 {number(g.meanError,true)} ／ 絶対誤差 {number(g.meanAbsoluteError,true)} ／ 最悪最大下落 {number(g.worstDrawdown,true)} ／ 下落分布25%・中央値・75% {number(g.drawdownDistribution?.p25,true)}・{number(g.drawdownDistribution?.median,true)}・{number(g.drawdownDistribution?.p75,true)}（{g.drawdownCount ?? 0}件）</p></article>)}</section>
     <details className="card"><summary>ジョブの進捗・中断・再開</summary>{status.data?.jobs.map(job => <article key={job.id}><p>{job.input.kind} · {job.input.asOf} · {job.status} · {job.processed}/{job.total}</p><p>{job.error}</p>{job.status !== "completed" && <><button disabled={busy || job.status === "running"} onClick={() => void act("/bottom/hunter/jobs", { resumeJobId: job.id })}>再開</button><button disabled={busy} onClick={() => void act(`/bottom/hunter/jobs/${job.id}/cancel`, {})}>キャンセル</button></>}</article>)}</details>
   </section>;
 }
