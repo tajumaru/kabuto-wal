@@ -32,16 +32,17 @@ export function KabumaruResearch({ request }: { request: Request }) {
   const status = useQuery({ queryKey: ["hunter-status"], queryFn: async () => hunterStatusSchema.parse(await request("/bottom/hunter/status")) });
   const master = useQuery({ queryKey: ["/master"], queryFn: async () => z.array(z.object({ providerCode: z.string(), name: z.string(), displayCode: z.string().optional() })).parse(await request("/master")) });
   const result = research.data;
+  const hasResult=!!result;
   useEffect(()=>{setChat(null);setDiagnostic(null);setMessage("");setBusy(false);setAllowLlm(false);setEvidenceOpen(false);},[key]);
   const restored=useRef("");
   useLayoutEffect(()=>{
-    if(!result||restored.current===key)return;
+    if(!hasResult||restored.current===key)return;
     restored.current=key;
     try{window.scrollTo(0,Number(sessionStorage.getItem(`research-scroll:${key}`)??0));}catch{/* Storage may be disabled. */}
     const save=()=>{try{sessionStorage.setItem(`research-scroll:${key}`,String(window.scrollY));}catch{/* Optional preference. */}};
     window.addEventListener("scroll",save,{passive:true});return()=>window.removeEventListener("scroll",save);
-  },[key,result]);
-  const activeChat = chat && chat.code === result?.code && chat.asOf === result.asOf && chat.jobId === result.jobId ? chat : null;
+  },[key,hasResult]);
+  const activeChat = chat && chat.researchId===result?.researchId && chat.code === result?.code && chat.asOf === result.asOf && chat.jobId === result.jobId ? chat : null;
   function update(k: string, value: string) {
     setParams(current => { const next = new URLSearchParams(current); if (value) next.set(k,value); else next.delete(k); if (k !== "jobId") next.delete("jobId"); return next; });
     setChat(null); setDiagnostic(null); setMessage("");
@@ -75,7 +76,11 @@ export function KabumaruResearch({ request }: { request: Request }) {
       <strong>{result.reliability}</strong><p>信頼性の区分は上昇確率ではありません。</p>
       {result.dataCoverage ? <p>対象{result.dataCoverage.universeCount}・取得済み{result.dataCoverage.acquiredCount}・80営業日{result.dataCoverage.continuous80Count}・判定可能{result.dataCoverage.analyzedCount}・取得失敗{result.dataCoverage.failedCount}。契約遅延{result.dataCoverage.delayDays}日。</p> : <p>カバレッジ情報は確認できません。</p>}
       {result.warnings.map(w => <p key={w}>{w}</p>)}</section>
-      <div className="research-cards">{Object.entries(sectionNames).map(([section,title]) => <section key={section} className="card"><h2>{title}</h2>{result.explanation.statements.filter(s => s.section === section).map(s => <p key={s.statementId}>{s.text} {s.evidenceIds.map((id,i) => <a key={id} href={`#evidence-${id}`}>根拠{i+1} </a>)}</p>)}</section>)}</div>
+      <div className="research-cards">{Object.entries(sectionNames).map(([section,title]) => {
+        const statements=result.explanation.statements.filter(s=>s.section===section);
+        const paragraphs=(items:typeof statements)=>items.map(s=><p key={s.statementId}>{s.text} {s.evidenceIds.map((id,i)=><a key={id} href={`#evidence-${id}`}>根拠{i+1} </a>)}</p>);
+        return <section key={section} className="card"><h2>{title}</h2>{paragraphs(statements.slice(0,3))}{statements.length>3&&<details><summary>続きを表示（{statements.length-3}項目）</summary>{paragraphs(statements.slice(3))}</details>}</section>;
+      })}</div>
       <section className="card"><h2>質問チャット</h2><p>定義済みの質問を、同じ取得時点の証拠で調べます。自由文や個人情報を送信する入力欄はありません。</p>
         <label><input type="checkbox" checked={saveHistory} onChange={e => setSaveHistory(e.target.checked)} />質問と回答をこの端末のJSONに保存</label>
         <div className="research-questions">{questions.map(([value,label]) => <button key={value} disabled={busy} onClick={() => void act("chat",value)}>{label}</button>)}</div>

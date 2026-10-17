@@ -75,13 +75,18 @@ it("過去時点の原本と評価を照合し、後日記憶・削除記憶・�
     await service.store.lock(() => evaluateHunterDue(service, new Date("2026-10-09T13:00:00.000Z")));
     const job = await engine.create({ asOf: "2026-10-09", from: f.from, cutoff: "2026-10-09T14:59:59.999Z" }); await engine.run(job.id);
     const input = { code: "72030", jobId: job.id, asOf: "2026-10-09" };
-    const first = await buildKabumaruResearch(service, input);
+    const scan=vi.spyOn(service,"predictions");
+    const [first,simultaneous] = await Promise.all([buildKabumaruResearch(service, input),buildKabumaruResearch(service, input)]);
+    expect(simultaneous.researchId).toBe(first.researchId);expect(scan).not.toHaveBeenCalled();scan.mockRestore();
     expect(first.evidence.filter(e => e.kind === "forecast")).toHaveLength(3);
     expect(first.evidence.filter(e => e.kind === "evaluation")).toHaveLength(3);
     expect(first.evidence.filter(e => e.kind === "memory")).toHaveLength(0); // Actual memory creation was later.
     expect(first.explanation.statements.some(s => s.text.includes("少数") || s.text.includes("標本数"))).toBe(true);
     expect(first.evidence.every(verifyEvidence)).toBe(true);
     const cached = await buildKabumaruResearch(service, input); expect(cached.generatedAt).toBe(first.generatedAt);
+    const cacheFiles=await service.store.files("research/cache");
+    for(const file of cacheFiles)await service.store.write(file,{invalid:"fixture"});
+    expect((await buildKabumaruResearch(service,input)).researchId).toBe(first.researchId);
     const memory = (await service.store.all("memories")).find(m => m.kind === "hunter_reflection");
     await service.store.write(`memories/${memory.recordId}.json`, { ...memory, createdAt: "2026-10-09T13:01:00.000Z" });
     expect((await buildKabumaruResearch(service, input)).evidence.filter(e => e.kind === "memory")).toHaveLength(1);
@@ -112,6 +117,10 @@ it("過去時点の原本と評価を照合し、後日記憶・削除記憶・�
       expect(diagnostic.externalCalls).toBe(0); expect(diagnostic.inputRevisionIds.length).toBeGreaterThan(0);
       expect(diagnostic.seriesConsistent).toBe(true); expect(diagnostic.adjustmentVersion).toBe("raw-factor-asof-v1");
       expect(Object.values(diagnostic.scoreBands).reduce((n: number,v) => n+Number(v),0)).toBe(2);
+      const reportResponse=await app.inject({method:"GET",url:`/api/research/outcomes?jobId=${job.id}`});
+      expect(reportResponse.statusCode).toBe(200);
+      const report=reportResponse.json();expect(report.control.ready).toBe(report.control.candidates+report.control.nonCandidates);
+      expect(report.groups.reduce((n:number,g:{evaluated:number})=>n+g.evaluated,0)).toBe(2);
       const saved = (await app.inject({ method: "POST", url: "/api/research/save", payload: input })).json();
       await service.store.write(`sync/${saved.recordId}.json`, { status: "deleted" });
       await service.store.write(`memories/${saved.recordId}.json`, { ...(await service.store.read(`memories/${saved.recordId}.json`)), active: false });

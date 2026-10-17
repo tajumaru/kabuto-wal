@@ -181,6 +181,7 @@ export class Store {
       "audit",
       "notifications",
       "assistant",
+      "research",
     ])
       for (const key of await this.files(folder))
         entries[key] = await this.read(key);
@@ -213,14 +214,14 @@ export class Store {
     for (const key of Object.keys(entries)) {
       this.path(key);
       if (
-        !/^(settings|market|prices|revisions|features|predictions|evaluations|chats|memories|indexes|sync|jobs|commitments|audit|notifications|assistant)\//.test(
+        !/^(settings|market|prices|revisions|features|predictions|evaluations|chats|memories|indexes|sync|jobs|commitments|audit|notifications|assistant|research)\//.test(
           key,
         )
       )
         throw Error("バックアップ内に許可されないファイル");
     }
     for (const [key, value] of Object.entries(entries)) {
-      if (key.endsWith("/original.json")) {
+      if (key.endsWith("/original.json") || key.startsWith("research/results/")) {
         const old = await this.read(key, null);
         if (old && JSON.stringify(old) !== JSON.stringify(value))
           throw Error("元予測と復元内容が競合しています");

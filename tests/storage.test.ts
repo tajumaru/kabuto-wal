@@ -50,6 +50,7 @@ it("暗号化バックアップで原本・salt・同期状態と索引を復元
   await store.write("predictions/p/original.json", { predictionId: "p" });
   await store.write("commitments/p.json", { salt: "abc" });
   await store.write("sync/r.json", { jobId: "j", status: "accepted" });
+  await store.write("research/results/research.json", { researchId:"fixture",evidenceIds:["immutable-reference"] },true);
   await store.rebuild();
   const payload = await store.export("long-passphrase-test");
   expect(payload).not.toContain("predictionId");
@@ -59,6 +60,7 @@ it("暗号化バックアップで原本・salt・同期状態と索引を復元
     predictionId: "p",
   });
   expect(await target.read("commitments/p.json")).toEqual({ salt: "abc" });
+  expect(await target.read("research/results/research.json")).toEqual({researchId:"fixture",evidenceIds:["immutable-reference"]});
   expect(await target.read("sync/r.json")).toEqual({
     jobId: "j",
     status: "accepted",
@@ -67,6 +69,8 @@ it("暗号化バックアップで原本・salt・同期状態と索引を復元
     "predictions/p/original.json",
   ]);
   await expect(target.import(payload, "incorrect-password")).rejects.toThrow();
+  await target.write("research/results/research.json",{researchId:"conflict"});
+  await expect(target.import(payload,"long-passphrase-test")).rejects.toThrow("競合");
 });
 
 it.runIf(process.platform === "win32")("一時的なrename競合を再試行し、恒久失敗でも旧JSONを削除しない", async () => {

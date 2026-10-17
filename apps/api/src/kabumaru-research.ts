@@ -13,7 +13,7 @@ import { deterministicResearch, researchReliability } from "./kabumaru-explanati
 import { hash } from "../../../packages/integrations/adjusted-series";
 import { cachedResearch, cacheResearch, singleResearch } from "./kabumaru-research-cache";
 import { searchDejavuContext } from "./hunter-research";
-import { researchRecords } from "./kabumaru-record-index";
+import { researchRecords,researchRecordIndex } from "./kabumaru-record-index";
 import { researchOutcomeReport } from "./kabumaru-outcomes";
 
 const knownBy = (value: unknown, cutoff: string) => typeof value === "string" && Number.isFinite(Date.parse(value)) && Date.parse(value) <= Date.parse(cutoff);
@@ -168,7 +168,13 @@ export function registerKabumaruResearch(app: FastifyInstance, service: Service)
     if (body.saveHistory) await service.store.lock(() => service.store.write(`research/chats/${hash([result.researchId, result.question, result.generatedAt])}.json`, result));
     return result;
   });
-  app.get("/api/research/chats", async () => ({ records: (await service.store.all("research/chats")).slice(-20).map(r => researchResultSchema.parse(r)) }));
+  app.get("/api/research/chats", async req => {
+    const q=z.object({code:researchInputSchema.shape.code.optional(),asOf:z.string().date().optional(),method:z.string().optional(),page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(20)}).parse(req.query);
+    const index=await researchRecordIndex(service);
+    const selected=index.entries.filter(e=>e.kind==="chat"&&(!q.code||e.code===q.code)&&(!q.asOf||e.asOf<=q.asOf)&&(!q.method||e.method===q.method)&&(service.mode==="demo"?e.mode==="demo":e.mode!=="demo")).reverse();
+    const records=await Promise.all(selected.slice((q.page-1)*q.pageSize,q.page*q.pageSize).map(e=>service.store.read(e.key).then(r=>researchResultSchema.parse(r))));
+    return {records,total:selected.length,page:q.page,pageSize:q.pageSize};
+  });
   app.post("/api/research/save", async req => {
     const input = researchInputSchema.parse(req.body), result = await buildKabumaruResearch(service, { ...input, provider: "deterministic", allowExternalLlm: false, recallRemote: false });
     const recordId = hash(["research-summary-v1", result.researchId]);

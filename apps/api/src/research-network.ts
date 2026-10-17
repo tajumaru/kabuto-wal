@@ -27,7 +27,7 @@ export function researchTarget(raw: string, allowed: string[]) {
   return url;
 }
 let active = 0;
-export type ResearchTransport = (url: URL, options: RequestOptions & { autoSelectFamily: false }, body: string) => Promise<string>;
+export type ResearchTransport = (url: URL, options: RequestOptions & { autoSelectFamily?: false; proxyEnv?: Record<string,string> }, body: string) => Promise<string>;
 export const pinnedResearchTransport: ResearchTransport = (url, options, body) => new Promise((resolve,reject) => {
   const req = request(url, options, res => {
     if (res.statusCode !== 200) { res.destroy(); reject(Error("LLM応答エラー")); return; }
@@ -55,7 +55,7 @@ export async function researchPost(url: URL, key: string, body: string, resolver
         if (!addresses.length || addresses.some(a => !publicResearchAddress(a.address) || isIP(a.address) !== a.family)) throw Error("LLM接続先が許可されていません");
         const selected = addresses[0];
         // No pooling, proxy, redirect or second DNS resolution. TLS checks the original hostname.
-        return transport(url, { method: "POST", agent: false, autoSelectFamily: false, servername: url.hostname, signal: controller.signal,
+        return transport(url, { method: "POST", agent: false, autoSelectFamily: false, family:selected.family, proxyEnv:{}, servername: url.hostname, signal: controller.signal,
           lookup: (_host, _options, callback) => callback(null, selected.address, selected.family),
           headers: { "Content-Type": "application/json", ...(key ? { Authorization: `Bearer ${key}` } : {}) } }, body);
       })(),

@@ -5,7 +5,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { demoBars, master } from "../../fixtures/demo";
-process.env.APP_ORIGIN = "http://localhost:5517";
+const webPort=Number(process.env.E2E_PORT??5517),apiPort=Number(process.env.E2E_API_PORT??3002);
+process.env.APP_ORIGIN = `http://localhost:${webPort}`;
 // A fresh seeded store prevents prior empty/personal settings changing test results.
 const dir = await mkdtemp(path.join(os.tmpdir(), "kabutowal-e2e-"));
 const service = new Service(dir, "demo", false);
@@ -20,13 +21,13 @@ for (const stock of master)
 await service.store.write("settings/watchlist.json", {
   codes: master.slice(0, 3).map((s) => s.providerCode),
 });
-await app.listen({ host: "127.0.0.1", port: 3002 });
+await app.listen({ host: "127.0.0.1", port: apiPort });
 const web = await createServer({
   server: {
     host: "127.0.0.1",
-    port: 5517,
+    port: webPort,
     strictPort: true,
-    proxy: { "/api": "http://127.0.0.1:3002" },
+    proxy: { "/api": `http://127.0.0.1:${apiPort}` },
   },
 });
 await web.listen();
