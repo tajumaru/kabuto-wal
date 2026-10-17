@@ -54,3 +54,31 @@ it("キャンセル・再開と外部取得の明示確認を保持", async () =
     await expect(engine.create({ kind: "initial", from: "2026-06-01", asOf: "2026-07-01" })).rejects.toThrow("明示確認");
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+it("完全一致した入力だけ再利用し、条件変更と別workerを拒否する", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "hunter-identity-"));
+  const service = new Service(dir, "demo", false);
+  try {
+    await service.init();
+    const engine = new HunterJobs(service), other = new HunterJobs(service);
+    const input = { asOf: "2026-10-09", cutoff: "2026-10-10T00:00:00.000Z" };
+    const a = await engine.create(input);
+    await engine.run(a.id);
+    const writes = vi.spyOn(service.store, "write");
+    const b = await engine.create(input);
+    await other.run(b.id);
+    expect((await engine.get(a.id)).analysisId).toBe((await engine.get(b.id)).analysisId);
+    expect(writes.mock.calls.filter(c => c[0].includes("/details/"))).toHaveLength(0);
+    const c = await engine.create({ ...input, cutoff: "2026-10-11T00:00:00.000Z" });
+    await engine.run(c.id, { maxSymbols: 1 });
+    expect((await engine.get(c.id)).analysisId).not.toBe((await engine.get(a.id)).analysisId);
+    const saved = await engine.get(c.id);
+    await service.store.write(`market/hunter/jobs/${c.id}.json`, { ...saved, analysisId: "obsolete-method" });
+    await engine.resume(c.id);
+    await expect(engine.run(c.id)).rejects.toThrow("分析条件");
+    const d = await engine.create(input);
+    const results = await Promise.allSettled([engine.run(d.id), other.run(d.id)]);
+    expect(results.filter(r => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(r => r.status === "rejected")).toHaveLength(1);
+  } finally { await rm(dir, { recursive: true, force: true, maxRetries: 5 }); }
+});

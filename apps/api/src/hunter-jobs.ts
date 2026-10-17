@@ -11,6 +11,8 @@ import { buildHunterUniverse } from "./hunter-universe";
 import { buildHunterIndex, readHunterObservations, hunterShard, hunterShardReader, type HunterIndex } from "./hunter-index";
 import { analyzeBottom } from "./bottom";
 
+import { hunterAnalysisId, hunterDetailKey } from "./hunter-consistency";
+
 const base = "market/hunter";
 const jobKey = (id: string) => `${base}/jobs/${id}.json`;
 export class HunterJobs {
@@ -82,6 +84,8 @@ export class HunterJobs {
     return this.service.store.lock(async () => {
       const job = await this.get(id);
       if (job.lease?.token !== token) throw Error("ジョブのleaseが変更されました");
+      const active = await this.service.store.read<{ lease: { token: string } } | null>(`${base}/indexes/active.json`, null);
+      if (active?.lease.token !== token) throw Error("ジョブのlease所有権が変更されました");
       const next = { ...job, ...values, updatedAt: this.now().toISOString() };
       if (next.lease) next.lease = { ...next.lease, expiresAt: this.now().getTime() + 1800000 };
       await this.service.store.write(jobKey(id), next);
@@ -114,7 +118,10 @@ export class HunterJobs {
       const from = job.input.from ?? cal.filter(d => d.open && d.date <= job!.input.asOf).map(d => d.date).sort().slice(-80)[0] ?? job.input.asOf;
       const index = await buildHunterIndex(this.service, job.input.asOf, job.cutoff, from, cancelled);
       if (job.datasetId && job.datasetId !== index.id) throw Error("入力revisionが変更されました。新しいジョブを開始してください");
-      job = await this.patch(id, token, { universeId: universe.id, datasetId: index.id, total: entries.length });
+      const analysisId = hunterAnalysisId(job, index, universe.id);
+      if (job.analysisId && job.analysisId !== analysisId) throw Error("分析条件が変更されました。新しいジョブを開始してください");
+      if (!job.analysisId && job.datasetId) throw Error("旧形式の中断ジョブです。新しいジョブを開始してください");
+      job = await this.patch(id, token, { analysisId, universeId: universe.id, datasetId: index.id, total: entries.length });
       let processedThisRun = 0;
       const allRows = await this.rows(id);
       const done = new Set(allRows.map(r => r.code));
@@ -129,13 +136,17 @@ export class HunterJobs {
           if (await this.service.store.read(rowKey, null)) return;
           const { row, analysis } = await this.screen(job!, index, entry, cal, loadShard);
           await this.service.store.lock(async () => {
+            const owner = await this.get(id);
+            if (owner.lease?.token !== token || owner.cancelRequested || owner.status !== "running") return;
+            const active = await this.service.store.read<{ lease: { token: string } } | null>(`${base}/indexes/active.json`, null);
+            if (active?.lease.token !== token) throw Error("ジョブのlease所有権が変更されました");
             if (!(await this.service.store.read(rowKey, null))) {
-              const detailKey = `${base}/details/${index.id}/${entry.code}.json`;
+              const detailKey = hunterDetailKey(job!, entry.code);
               if (!(await this.service.store.read(detailKey, null))) await this.service.store.write(detailKey, { analysis, row }, true);
               await this.service.store.write(rowKey, row, true);
             }
           });
-          allRows.push(row);
+          if (await this.service.store.read(rowKey, null)) allRows.push(row);
           processedThisRun++;
         }));
         job = await this.patch(id, token, { processed: allRows.length });
@@ -145,6 +156,8 @@ export class HunterJobs {
       const status = isCancelled ? "cancelled" : rows.length === entries.length ? "completed" : "paused";
       const coverage = await this.coverage(job, universe, rows, status === "completed");
       if (status === "completed") await this.service.store.lock(async () => {
+        const owner = await this.get(id);
+        if (owner.lease?.token !== token || owner.cancelRequested) throw Error("完了前にジョブが中断されました");
         await this.service.store.write(`${base}/rankings/${id}/index.json`, rows.sort(compareHunterRows).map((r, i) => ({ ...r, rank: i + 1 })));
         await this.service.store.write(`${base}/indexes/latest.json`, { jobId: id, asOf: job!.input.asOf, cutoff: job!.cutoff, datasetId: index.id });
         await this.service.store.write(`${base}/indexes/dates/${job!.input.asOf}.json`, { jobId: id });
@@ -154,7 +167,7 @@ export class HunterJobs {
     } catch (error) {
       if (job?.lease) {
         const current = await this.get(id);
-        await this.patch(id, job.lease.token, { status: current.cancelRequested ? "cancelled" : "failed", error: error instanceof Error ? error.message : "走査に失敗しました", lease: undefined });
+        if (current.lease?.token === job.lease.token) await this.patch(id, job.lease.token, { status: current.cancelRequested ? "cancelled" : "failed", error: error instanceof Error ? error.message : "走査に失敗しました", lease: undefined });
       }
       throw error;
     } finally { this.running.delete(id); }
@@ -165,8 +178,11 @@ export class HunterJobs {
     return rows;
   }
   private async screen(job: HunterJob, index: HunterIndex, entry: HunterUniverse["entries"][number], cal: Calendar, loadShard: ReturnType<typeof hunterShardReader>) {
-    const cache = await this.service.store.read<{ analysis: Awaited<ReturnType<typeof analyzeBottom>>; row: HunterRow } | null>(`${base}/details/${index.id}/${entry.code}.json`, null);
-    if (cache) return { ...cache, row: { ...cache.row, jobId: job.id } };
+    const cache = await this.service.store.read<{ analysis: Awaited<ReturnType<typeof analyzeBottom>>; row: HunterRow } | null>(hunterDetailKey(job, entry.code), null);
+    if (cache) {
+      if (cache.row.code !== entry.code || cache.row.asOf !== job.input.asOf || cache.row.cutoff !== job.cutoff || cache.row.methodVersion !== job.methodVersion) throw Error("分析キャッシュの参照が一致しません");
+      return { ...cache, row: { ...cache.row, jobId: job.id } };
+    }
     let lastSession: string | null;
     let continuousSessions = 0, acquisitionStatus: HunterRow["acquisitionStatus"] = "missing", failure: string | undefined;
     let series: Awaited<ReturnType<MarketIngestion["series"]>> | null = null;

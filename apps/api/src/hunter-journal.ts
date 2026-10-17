@@ -1,3 +1,4 @@
+import { hunterDetailKey } from "./hunter-consistency";
 import { z } from "zod";
 import type { Service } from "./service";
 import { predictionSchema, targetDate, evaluate, type Calendar, type Prediction } from "../../../packages/core/index";
@@ -16,7 +17,7 @@ export async function recordHunterForecast(service: Service, raw: unknown, now =
   const input = hunterForecastInputSchema.parse(raw);
   const job = hunterJobSchema.parse(await service.store.read(`market/hunter/jobs/${input.jobId}.json`));
   if (!job.datasetId) throw Error("走査結果がありません");
-  const detail = await service.store.read<{ analysis: BottomAnalysis; row: { candidate: boolean; category: string } }>(`market/hunter/details/${job.datasetId}/${input.code}.json`);
+  const detail = await service.store.read<{ analysis: BottomAnalysis; row: { candidate: boolean; category: string } }>(hunterDetailKey(job, input.code));
   if (!detail.row.candidate || detail.analysis.status !== "ready") throw Error("底打ち候補の判定が必要です");
   const today = now.toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
   if (input.recordingMode === "live" && (job.input.asOf !== today || job.cutoff.slice(0,10) !== today)) throw Error("過去日付の仮説を実運用として記録できません");

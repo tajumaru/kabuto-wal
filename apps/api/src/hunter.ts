@@ -1,3 +1,4 @@
+import { hunterDetailKey } from "./hunter-consistency";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Service } from "./service";
@@ -42,7 +43,7 @@ export async function hunterCandidate(service: Service, code: string, id: string
   if (!job.datasetId) return null;
   const row = await service.store.read<HunterRow | null>(`${HUNTER_BASE}/rankings/${id}/${code}.json`, null);
   if (!row) return null;
-  const detail = await service.store.read<{ analysis: BottomAnalysis }>(`${HUNTER_BASE}/details/${job.datasetId}/${code}.json`);
+  const detail = await service.store.read<{ analysis: BottomAnalysis }>(hunterDetailKey(job, code));
   let dejavu = null, dejavuWarning: string | undefined;
   if (includeResearch && detail.analysis.status === "ready") {
     try {

@@ -53,7 +53,7 @@ export const hunterJobSchema = z.object({
   createdAt: z.string().datetime(), updatedAt: z.string().datetime(),
   status: z.enum(["queued", "running", "paused", "cancelled", "failed", "completed"]),
   cancelRequested: z.boolean(), processed: z.number().int(), total: z.number().int(),
-  universeId: z.string().optional(), datasetId: z.string().optional(), error: z.string().optional(),
+  universeId: z.string().optional(), datasetId: z.string().optional(), analysisId: z.string().optional(), error: z.string().optional(),
   lease: z.object({ token: z.string(), pid: z.number(), expiresAt: z.number() }).optional(),
 });
 export const hunterFilterSchema = z.object({
