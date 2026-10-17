@@ -8,6 +8,8 @@ import { readHunterDetail } from "./hunter-consistency";
 import { hash } from "../../../packages/integrations/adjusted-series";
 import { planCapabilities } from "../../../packages/integrations/jquants-plan";
 import { evaluateCohort,cohortEvaluations } from "./hunter-cohort-evaluation";
+import { targetDate,type Calendar } from "../../../packages/core/index";
+import { cohortReport } from "./hunter-cohort-report";
 export const cohortBase=(id:string)=>`market/hunter/cohorts/${cohortIdSchema.parse(id)}`;
 export function cohortIdentity(m:Omit<CohortManifest,"cohortId"|"createdAt">){return hash(m);}
 export async function readCohort(service:Service,id:string){
@@ -40,8 +42,10 @@ export async function createCohort(service:Service,raw:unknown,now=new Date()){
   const coverage=hunterCoverageSchema.parse(await service.store.read(`market/hunter/coverage/${job.id}.json`));
   if(coverage.jobId!==job.id||coverage.cutoff!==job.cutoff||coverage.asOf!==job.input.asOf||coverage.processedCount!==job.total)throw Error("取得範囲とジョブの不一致");
   const plan=service.mode==="demo"?"fixture":(coverage.plan??process.env.JQUANTS_PLAN??"Free"),shards:CohortManifest["shards"]=[];
+  const calendar=await service.store.read<Calendar>("market/calendar.json",[]);
+  const target=(h:number)=>{try{return targetDate(calendar,job.input.asOf,h);}catch{return null;}};
   for(let i=0;i<members.length;i+=200){const rows=members.slice(i,i+200);shards.push({key:`members/${String(i/200).padStart(5,"0")}.json`,hash:hash(rows),count:rows.length});}
-  const identity:Omit<CohortManifest,"cohortId"|"createdAt">={schemaVersion:1 as const,jobId:job.id,datasetId:job.datasetId,analysisId:job.analysisId,asOf:job.input.asOf,cutoff:job.cutoff,methodVersion:job.methodVersion,cohortMethod:COHORT_METHOD,universeId:job.universeId,mode:job.mode,experiment:input.experiment,plan,delayDays:plan==="fixture"?0:planCapabilities(plan).delayDays,memberCount:members.length,shards};
+  const identity:Omit<CohortManifest,"cohortId"|"createdAt">={schemaVersion:1 as const,jobId:job.id,datasetId:job.datasetId,analysisId:job.analysisId,asOf:job.input.asOf,cutoff:job.cutoff,methodVersion:job.methodVersion,cohortMethod:COHORT_METHOD,universeId:job.universeId,mode:job.mode,experiment:input.experiment,plan,delayDays:plan==="fixture"?0:planCapabilities(plan).delayDays,targets:{"1":target(1),"5":target(5),"20":target(20)},memberCount:members.length,shards};
   const id=cohortIdentity(identity),base=cohortBase(id);
   return service.store.lock(async()=>{
     const current=await engine.get(job.id);if(current.status!=="completed"||current.analysisId!==job.analysisId||current.cancelRequested)throw Error("保存前にジョブが変化しました");
@@ -51,6 +55,7 @@ export async function createCohort(service:Service,raw:unknown,now=new Date()){
   });
 }
 export function registerHunterCohorts(app:FastifyInstance,service:Service){
+  app.post("/api/bottom/hunter/cohorts/report",async req=>{const q=z.object({cohortIds:z.array(cohortIdSchema).min(1).max(100)}).strict().parse(req.body);return cohortReport(service,q.cohortIds);});
   app.post("/api/bottom/hunter/cohorts/:id/evaluate",async req=>{const {id}=z.object({id:cohortIdSchema}).parse(req.params);return evaluateCohort(service,id);});
   app.get("/api/bottom/hunter/cohorts/:id/evaluations",async req=>{const {id}=z.object({id:cohortIdSchema}).parse(req.params);const q=z.object({page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(20)}).parse(req.query);const rows=await cohortEvaluations(service,id);return {records:rows.slice((q.page-1)*q.pageSize,q.page*q.pageSize),total:rows.length,...q};});
   app.post("/api/bottom/hunter/cohorts",async req=>createCohort(service,req.body));

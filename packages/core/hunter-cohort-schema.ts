@@ -6,7 +6,7 @@ export const cohortMemberSchema=z.object({code:hunterCode,score:z.number().min(0
   inputRevisionIds:z.array(z.string()),eligible:z.boolean(),exclusionReasons:z.array(z.string()),conditions:z.array(z.string()),risks:z.array(z.string()),indicators:z.record(z.string(),z.number().finite().nullable()),adjustmentVersion:z.string().nullable()}).strict();
 export const cohortManifestSchema=z.object({schemaVersion:z.literal(1),cohortId:cohortIdSchema,jobId:z.string().uuid(),datasetId:z.string(),analysisId:z.string(),asOf:z.string().date(),cutoff:z.string().datetime(),
   methodVersion:z.string(),cohortMethod:z.literal(COHORT_METHOD),universeId:z.string(),createdAt:z.string().datetime(),mode:z.enum(["demo","research"]),experiment:z.enum(["prospective","retrospective","walk-forward"]),plan:z.string(),delayDays:z.number(),
-  memberCount:z.number().int().min(0).max(20000),shards:z.array(z.object({key:z.string().regex(/^members\/\d{5}\.json$/),hash:cohortIdSchema,count:z.number().int().max(200)}))}).strict();
+  targets:z.object({"1":z.string().date().nullable(),"5":z.string().date().nullable(),"20":z.string().date().nullable()}),memberCount:z.number().int().min(0).max(20000),shards:z.array(z.object({key:z.string().regex(/^members\/\d{5}\.json$/),hash:cohortIdSchema,count:z.number().int().max(200)}))}).strict();
 export const cohortInputSchema=z.object({jobId:z.string().uuid(),experiment:z.enum(["prospective","retrospective","walk-forward"]).default("retrospective")}).strict();
 export type CohortMember=z.infer<typeof cohortMemberSchema>;
 export type CohortManifest=z.infer<typeof cohortManifestSchema>;

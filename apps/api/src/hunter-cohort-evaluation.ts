@@ -23,7 +23,7 @@ export async function evaluateCohort(service:Service,id:string,now=new Date()){
   const load=(code:string,target:string)=>{const key=`${code}/${target}`;let pending=series.get(key);if(!pending){pending=service.mode==="demo"?snapshot(service,code,cutoff):new MarketIngestion(service.store,null,manifest.plan).series(code,target,cutoff,manifest.asOf,undefined,false).then(s=>s.bars);series.set(key,pending);}return pending;};
   for(const member of members)for(const horizon of [1,5,20] as const){
     let target:string|null=null,status:CohortEvaluation["status"]="pending",reasons:string[]=[],outcome:ReturnType<typeof cohortPathOutcome>=null;
-    try{target=targetDate(calendar,manifest.asOf,horizon);}catch{reasons=["calendar-incomplete"];}
+    try{target=manifest.targets[String(horizon) as "1"|"5"|"20"];if(!target||targetDate(calendar,manifest.asOf,horizon)!==target){target=null;reasons=["calendar-incomplete-or-revised"];}}catch{reasons=["calendar-incomplete"];}
     if(!member.eligible){status="excluded";reasons=member.exclusionReasons.length?member.exclusionReasons:["not-analyzable"];}
     else if(target&&target<=today){
       try{outcome=cohortPathOutcome(await load(member.code,target),manifest.asOf,target,calendar,cutoff);status=outcome?"evaluated":"missing";reasons=outcome?[]:["prices-unavailable-or-inconsistent"];}catch{status="missing";reasons=["prices-unavailable-or-inconsistent"];}
