@@ -8,6 +8,7 @@ import { KabumaruPortrait } from "./Kabumaru";
 import { KabumaruEvidence } from "./KabumaruEvidence";
 import { displayStockCode } from "./stock-search";
 import { StockPicker } from "./StockPicker";
+import { ResearchOutcomes } from "./ResearchOutcomes";
 import "./KabumaruResearch.css";
 
 type Request = (url: string, body?: unknown) => Promise<unknown>;
@@ -74,6 +75,7 @@ export function KabumaruResearch({ request }: { request: Request }) {
         <button disabled={busy || !allowLlm} onClick={() => void act("llm")}>設定済みLLMで根拠文を構成</button>
       </details>
       <details className="card"><summary>保存済み実市場データの診断</summary><p>この1銘柄の取得状況・調整系列・revision・類似件数を確認します。J-Quantsへの追加取得は行いません。</p><button disabled={busy} onClick={() => void act("diagnostic")}>ローカル診断を実行</button>{diagnostic !== null && <pre>{JSON.stringify(diagnostic,null,2)}</pre>}</details>
+      <ResearchOutcomes request={request} jobId={result.jobId} />
       <KabumaruEvidence evidence={result.evidence} />
     </>}
     <Link to={`/bottom/hunter?${new URLSearchParams(Object.fromEntries([...params].filter(([k]) => ["asOf","jobId"].includes(k))))}`}>底打ちハンターへ戻る</Link>

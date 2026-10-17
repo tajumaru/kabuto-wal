@@ -76,9 +76,9 @@ export async function assessHunter(service: Service, p: Prediction, now = new Da
   if (!result) return null;
   const path = bars.filter(b => b.sessionDate >= p.dataAsOf && b.sessionDate <= p.targetSessionDate);
   if (path.length !== p.horizonSessions + 1 || path.some(b => b.adjClose === null)) return null;
-  let peak = path[0].adjClose!, maxDrawdown = 0;
-  for (const b of path) { peak = Math.max(peak, b.adjClose!); maxDrawdown = Math.min(maxDrawdown, b.adjClose!/peak-1); }
-  return { ...result, maxDrawdown, pathRevisionIds: path.map(b => b.revisionId), evaluatedCutoff: now.toISOString() };
+  let peak = path[0].adjClose!, maxDrawdown = 0, rebounded = false, relapse = false;
+  for (const b of path) { peak = Math.max(peak, b.adjClose!); maxDrawdown = Math.min(maxDrawdown, b.adjClose!/peak-1); if (b.adjClose! > path[0].adjClose!) rebounded = true; if (rebounded && b.adjClose! < path[0].adjClose!) relapse = true; }
+  return { ...result, maxDrawdown, relapse, pathRevisionIds: path.map(b => b.revisionId), evaluatedCutoff: now.toISOString() };
 }
 // Caller follows the existing journal writer lock. No nested locks or network calls here.
 export async function evaluateHunterDue(service: Service, now = new Date()) {

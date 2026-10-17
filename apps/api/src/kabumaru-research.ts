@@ -14,6 +14,7 @@ import { hash } from "../../../packages/integrations/adjusted-series";
 import { cachedResearch, cacheResearch, singleResearch } from "./kabumaru-research-cache";
 import { searchDejavuContext } from "./hunter-research";
 import { researchRecords } from "./kabumaru-record-index";
+import { researchOutcomeReport } from "./kabumaru-outcomes";
 
 const knownBy = (value: unknown, cutoff: string) => typeof value === "string" && Number.isFinite(Date.parse(value)) && Date.parse(value) <= Date.parse(cutoff);
 const evaluationSchema = z.object({ evaluationId: z.string(), predictionId: z.string(), methodVersion: z.string(), createdAt: z.string().datetime(), evaluatedCutoff: z.string().datetime().optional(),
@@ -151,6 +152,10 @@ export async function runKabumaruResearch(service: Service, raw: unknown) {
 }
 
 export function registerKabumaruResearch(app: FastifyInstance, service: Service) {
+  app.get("/api/research/outcomes", async req => {
+    const q=z.object({jobId:z.string().uuid().optional()}).parse(req.query);
+    return researchOutcomeReport(service,q.jobId);
+  });
   app.get("/api/research/records", async req => {
     const q = z.object({ code: researchInputSchema.shape.code, asOf: z.string().date(), method: z.string().optional(), page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(20) }).parse(req.query);
     const selected = await researchRecords(service,q.code,q.asOf,q.method,q.page,q.pageSize);
