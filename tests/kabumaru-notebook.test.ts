@@ -8,6 +8,7 @@ import { createCohort } from "../apps/api/src/hunter-cohort";
 import { evaluateCohort } from "../apps/api/src/hunter-cohort-evaluation";
 import { createNotebook,readNotebook,notebookBase } from "../apps/api/src/kabumaru-notebook";
 import { notebookInsights } from "../apps/api/src/kabumaru-notebook-insights";
+import { notebookAnswer } from "../apps/api/src/kabumaru-notebook-answer";
 import { demoBars } from "../fixtures/demo";
 
 it("ノートをコホート・評価原本へ照合し、派生要約の破損と後日の評価から原本を保護する",async()=>{
@@ -19,6 +20,8 @@ it("ノートをコホート・評価原本へ照合し、派生要約の破損�
     await evaluateCohort(s,cohort.cohortId,new Date("2026-10-16T00:00:00.000Z"));
     const note=await createNotebook(s,{theme:"false-rebound",cohortIds:[cohort.cohortId],hypothesis:"未検証の仮説"},new Date("2026-10-16T01:00:00.000Z"));
     expect(await readNotebook(s,note.notebookId)).toEqual(note);
+    const historical=await notebookAnswer(s,{research:{code:"72030",asOf:"2026-10-09"},question:"candidate-control"});expect(historical.references).toHaveLength(0);expect(historical.statements[0].text).toContain("判断できません");
+    const current=await notebookAnswer(s,{research:{code:"72030",asOf:"2026-10-17"},question:"candidate-control"});expect(current.references.some(r=>r.notebookId===note.notebookId)).toBe(true);
     expect(notebookInsights(note).statements.every(s=>s.sampleCount===0||s.evidenceIds.length>0)).toBe(true);
     await s.store.write(`${notebookBase(note.notebookId)}/summary.json`,{corrupt:true});
     expect(notebookInsights(await readNotebook(s,note.notebookId))).toEqual(notebookInsights(note));

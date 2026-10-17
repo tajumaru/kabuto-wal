@@ -1,0 +1,4 @@
+import { z } from "zod";
+export const notebookQuestion=z.enum(["same-pattern","failures","candidate-control","high-score","notes","lessons"]);
+export const notebookQuestions:Record<z.infer<typeof notebookQuestion>,string>={"same-pattern":"この底打ちパターンは過去に成功した？",failures:"同じ条件で失敗した銘柄は？","candidate-control":"候補と非候補ではどちらの成績が良い？","high-score":"スコア80点以上は本当に有利？",notes:"この条件について過去の研究ノートはある？",lessons:"以前の研究結果から何が分かった？"};
+export const notebookAnswerSchema=z.object({question:notebookQuestion,cutoff:z.string().datetime(),statements:z.array(z.object({text:z.string(),sampleCount:z.number(),evidenceIds:z.array(z.string())})),references:z.array(z.object({notebookId:z.string(),createdAt:z.string().datetime(),evidenceIds:z.array(z.string()),cohortIds:z.array(z.string()),evaluationIds:z.array(z.string())})),warnings:z.array(z.string())});

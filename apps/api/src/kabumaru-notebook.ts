@@ -7,6 +7,7 @@ import { hash } from "../../../packages/integrations/adjusted-series";
 import { cohortObservations,comparativeCohortReport } from "./hunter-cohort-report";
 import { notebookInsights,notebookPattern,notebookEvidenceId } from "./kabumaru-notebook-insights";
 import { saveNotebookMemory,syncNotebookMemory,recallNotebookMemory } from "./kabumaru-notebook-memory";
+import { notebookAnswer } from "./kabumaru-notebook-answer";
 export const notebookBase=(id:string)=>`research/notebooks/${cohortIdSchema.parse(id)}`;
 export function notebookIdentity(note:NotebookOriginal){const {notebookId,...body}=notebookOriginalSchema.parse(note);void notebookId;return hash(body);}
 export async function readNotebook(service:Service,id:string){
@@ -29,6 +30,7 @@ export async function createNotebook(service:Service,raw:unknown,now=new Date())
   return service.store.lock(async()=>{const key=`${notebookBase(note.notebookId)}/original.json`;if(await service.store.read(key,null))return readNotebook(service,note.notebookId);await service.store.write(key,note,true);await service.store.write(`${notebookBase(note.notebookId)}/summary.json`,notebookInsights(note));return note;});
 }
 export function registerKabumaruNotebook(app:FastifyInstance,service:Service){
+  app.post("/api/research/notebook/answer",async req=>notebookAnswer(service,req.body));
   app.post("/api/research/notebook/recall",async req=>recallNotebookMemory(service,req.body));
   app.post("/api/research/notebook/:id/memory",async req=>{const {id}=z.object({id:cohortIdSchema}).parse(req.params);return saveNotebookMemory(service,id);});
   app.post("/api/research/notebook/:id/sync",async req=>{const {id}=z.object({id:cohortIdSchema}).parse(req.params),body=z.object({confirmExternal:z.boolean()}).strict().parse(req.body);return syncNotebookMemory(service,id,body.confirmExternal);});
