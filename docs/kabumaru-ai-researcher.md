@@ -1,5 +1,7 @@
 # かぶまるAI研究員
 
+第4弾の固定コホート・候補対照比較・研究ノート・MemWal参照は [かぶまる研究ノート](kabumaru-research-notebook.md) を参照。
+
 第3.5弾の通信・検索・実績検証・モバイル改善と検証結果は [実運用強化](research-production-hardening.md) を参照。外部LLMは接続先allowlistも必須となった。
 
 実装日：2026-10-17。開始時にorigin/mainをfetchし、mainとの差分0/0を確認。起点はc5696dd。既存の底打ちハンター2.5・デジャヴ2.0・JSONストレージ・予測ジャーナル・MemWal SDKを再利用した。DB・常駐サーバー・キャラクターの追加なし。

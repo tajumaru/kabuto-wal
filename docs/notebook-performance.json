@@ -1,0 +1,66 @@
+{
+  "baseline": "e855135",
+  "externalCalls": 0,
+  "outputs": [
+    {
+      "size": 1000,
+      "unit": "ms",
+      "oldInitial": 999.3,
+      "newInitial": 305.94,
+      "oldRepeat": [
+        251.62,
+        276.17,
+        239.62
+      ],
+      "newRepeat": [
+        50.92,
+        43.99,
+        41.73
+      ],
+      "oldSwitch": 236.61,
+      "newSwitch": 38.23,
+      "oldDelete": 246.25,
+      "newDelete": 257.98,
+      "repeatImprovementPercent": 82.52,
+      "outcome": {
+        "oldMs": 919.98,
+        "newMs": 1045.15,
+        "repeatMs": 1.64,
+        "oldPriceReconstructions": 1003,
+        "newPriceReconstructions": 102,
+        "repeatPriceReconstructions": 0,
+        "priceSource": "mock of saved fixture series; no network"
+      }
+    },
+    {
+      "size": 10000,
+      "unit": "ms",
+      "oldInitial": 8783.33,
+      "newInitial": 3648.71,
+      "oldRepeat": [
+        2175.65,
+        2069.73,
+        2037.42
+      ],
+      "newRepeat": [
+        107.86,
+        111.25,
+        108.81
+      ],
+      "oldSwitch": 2132.35,
+      "newSwitch": 159.5,
+      "oldDelete": 2189.39,
+      "newDelete": 2132.08,
+      "repeatImprovementPercent": 94.74,
+      "outcome": {
+        "oldMs": 10339.79,
+        "newMs": 10478.93,
+        "repeatMs": 1.93,
+        "oldPriceReconstructions": 10003,
+        "newPriceReconstructions": 102,
+        "repeatPriceReconstructions": 0,
+        "priceSource": "mock of saved fixture series; no network"
+      }
+    }
+  ]
+}

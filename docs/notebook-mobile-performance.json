@@ -1,0 +1,7 @@
+{
+  "viewport": "320x568 Chromium",
+  "samplesMs": [996.51, 953.75, 952.85, 451.8, 419.78],
+  "medianMs": 952.85,
+  "minMs": 419.78,
+  "maxMs": 996.51
+}
