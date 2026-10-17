@@ -29,6 +29,7 @@ export function KabumaruResearch({ request }: { request: Request }) {
   const status = useQuery({ queryKey: ["hunter-status"], queryFn: async () => hunterStatusSchema.parse(await request("/bottom/hunter/status")) });
   const master = useQuery({ queryKey: ["/master"], queryFn: async () => z.array(z.object({ providerCode: z.string(), name: z.string(), displayCode: z.string().optional() })).parse(await request("/master")) });
   const result = research.data;
+  const activeChat = chat && chat.code === result?.code && chat.asOf === result.asOf && chat.jobId === result.jobId ? chat : null;
   function update(k: string, value: string) {
     setParams(current => { const next = new URLSearchParams(current); if (value) next.set(k,value); else next.delete(k); if (k !== "jobId") next.delete("jobId"); return next; });
     setChat(null); setDiagnostic(null); setMessage("");
@@ -65,7 +66,7 @@ export function KabumaruResearch({ request }: { request: Request }) {
         <label><input type="checkbox" checked={saveHistory} onChange={e => setSaveHistory(e.target.checked)} />質問と回答をこの端末のJSONに保存</label>
         <div className="research-questions">{questions.map(([value,label]) => <button key={value} disabled={busy} onClick={() => void act("chat",value)}>{label}</button>)}</div>
         {busy && <p role="status">根拠を照合中…</p>}
-        {chat && <div aria-live="polite"><h3>{questions.find(([q]) => q === chat.question)?.[1] ?? "研究回答"}</h3><p>説明方式：{chat.provider} ／ {chat.reliability}</p>{chat.warnings.map(w => <p key={w}>{w}</p>)}{chat.explanation.statements.filter(s => (answerSections[chat.question] ?? Object.keys(sectionNames)).includes(s.section)).map(s => <p key={s.statementId}>{s.text} {s.evidenceIds.map((id,i) => <a key={id} href={`#evidence-${id}`}>根拠{i+1} </a>)}</p>)}</div>}
+        {activeChat && <div aria-live="polite"><h3>{questions.find(([q]) => q === activeChat.question)?.[1] ?? "研究回答"}</h3><p>説明方式：{activeChat.provider} ／ {activeChat.reliability}</p>{activeChat.warnings.map(w => <p key={w}>{w}</p>)}{activeChat.explanation.statements.filter(s => (answerSections[activeChat.question] ?? Object.keys(sectionNames)).includes(s.section)).map(s => <p key={s.statementId}>{s.text} {s.evidenceIds.map((id,i) => <a key={id} href={`#evidence-${id}`}>根拠{i+1} </a>)}</p>)}</div>}
       </section>
       <details className="card"><summary>保存・関連記憶・任意の外部説明</summary><p>ローカル研究は外部通信なしで利用できます。市場データ送信は既存の許可設定にも従います。</p>
         <button disabled={busy} onClick={() => void act("save")}>研究要約をローカル保存</button><button disabled={busy} onClick={() => void act("memory")}>許可設定に従ってMemWal関連記憶を検索</button>

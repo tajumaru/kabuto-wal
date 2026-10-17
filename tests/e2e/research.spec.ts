@@ -1,0 +1,35 @@
+import { test, expect } from "@playwright/test";
+
+test("ハンターから研究し、根拠付きの質問・ローカル保存・iPhone幅表示を確認", async ({ page }) => {
+  const launched = await page.request.post("/api/bottom/hunter/jobs", { data: { asOf: "2026-10-09", cutoff: "2026-10-09T14:59:59.999Z" } });
+  expect(launched.ok()).toBe(true);
+  const job = await launched.json();
+  await expect.poll(async () => (await (await page.request.get(`/api/bottom/hunter/jobs/${job.id}`)).json()).status).toBe("completed");
+  await page.goto(`/bottom/hunter?asOf=2026-10-09&jobId=${job.id}`);
+  await page.locator(".hunter-desktop tbody tr").filter({ hasText: "架空モビリティ" }).getByRole("link", { name: "かぶまるに研究してもらう" }).click();
+  await expect(page).toHaveURL(/\/research\?.*code=72030/);
+  await expect(page.getByRole("heading", { name: "かぶまるAI研究員", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "研究サマリー", exact: true })).toBeVisible();
+  await expect(page.locator(".kabumaru-bubble")).toBeHidden();
+  await expect(page.locator(".research-evidence > details")).not.toHaveCount(0);
+  const source = page.locator(".research-evidence > details").first(); await source.locator("summary").first().click();
+  await expect(source).toContainText("取得締切：2026-10-09");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByRole("button", { name: "この銘柄のリスクは？", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "この銘柄のリスクは？", exact: true })).toBeVisible();
+  await expect(page.getByText("説明方式：deterministic", { exact: false })).toBeVisible();
+  expect((await (await page.request.get("/api/research/chats")).json()).records).toHaveLength(0);
+  await page.getByLabel("質問と回答をこの端末のJSONに保存").check();
+  await page.getByRole("button", { name: "過去の予測は当たった？", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "過去の予測は当たった？", exact: true })).toBeVisible();
+  await expect.poll(async () => (await (await page.request.get("/api/research/chats")).json()).records.length).toBe(1);
+  await page.getByText("保存・関連記憶・任意の外部説明", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "設定済みLLMで根拠文を構成", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "研究要約をローカル保存", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "ローカルに要約を保存" })).toBeVisible();
+  await page.screenshot({ path: "test-results/kabumaru-research-mobile.png", fullPage: true });
+  await page.goto("/research?code=99990&asOf=2026-10-08");
+  await expect(page.getByText("根拠不足", { exact: true })).toBeVisible();
+  await expect(page.getByText("対象銘柄の走査済み根拠がなく、確認できません。", { exact: false })).toBeVisible();
+});

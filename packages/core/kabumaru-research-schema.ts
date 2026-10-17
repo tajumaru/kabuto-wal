@@ -29,12 +29,13 @@ export const researchEvidenceSchema = z.discriminatedUnion("kind", [
   }).strict() }).strict(),
   z.object({ ...header, kind: z.literal("forecast"), facts: z.object({
     predictedReturn: finite, horizon: z.union([z.literal(1), z.literal(5), z.literal(20)]), target: z.string().date(),
-    experiment: z.enum(["prospective", "retrospective", "walk-forward"]), score: finite.nullable(), classification: hunterCategory,
+    experiment: z.enum(["prospective", "retrospective", "walk-forward"]), score: finite.nullable(), classification: hunterCategory.nullable(),
+    metConditions: z.array(condition), risks: z.array(z.string().regex(/^[a-z0-9_]+$/)),
   }).strict() }).strict(),
   z.object({ ...header, kind: z.literal("evaluation"), facts: z.object({
     predictionId: z.string(), actualReturn: finite, predictedReturn: finite, maxDrawdown: finite.nullable(),
     horizon: z.union([z.literal(1), z.literal(5), z.literal(20)]), experiment: z.enum(["prospective", "retrospective", "walk-forward"]),
-    score: finite.nullable(), classification: hunterCategory, period: z.string().regex(/^\d{4}-\d{2}$/),
+    score: finite.nullable(), classification: hunterCategory.nullable(), period: z.string().regex(/^\d{4}-\d{2}$/),
   }).strict() }).strict(),
   z.object({ ...header, kind: z.literal("memory"), facts: z.object({
     referenceId: z.string(), confirmedLocally: z.literal(true), matchReasons: z.array(z.enum(["code", "classification", "pattern", "outcome", "risk"])),
@@ -59,7 +60,7 @@ export const researchResultSchema = z.object({
   memorySearch: z.enum(["local", "memwal", "fallback"]),
 }).strict().superRefine((r, ctx) => {
   const ids = new Set(r.evidence.map(e => e.evidenceId));
-  if (ids.size !== r.evidence.length || r.evidenceIds.length !== ids.size || r.evidenceIds.some(id => !ids.has(id)) ||
+  if (ids.size !== r.evidence.length || r.evidenceIds.length !== ids.size || new Set(r.evidenceIds).size !== ids.size || r.evidenceIds.some(id => !ids.has(id)) ||
     r.explanation.statements.some(s => s.evidenceIds.some(id => !ids.has(id))) ||
     r.evidence.some(e => e.asOf > r.asOf || e.cutoff > r.cutoff))
     ctx.addIssue({ code: "custom", message: "研究の根拠参照または取得時点が一致しません" });

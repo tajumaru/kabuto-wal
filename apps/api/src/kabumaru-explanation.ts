@@ -33,20 +33,23 @@ export function deterministicResearch(evidence: ResearchEvidence[]): ResearchExp
   } else add("summary", "対象銘柄の走査済み根拠がなく、確認できません。保存済みデータの走査とジョブ指定が必要です。");
   const dejavu = evidence.find(e => e.kind === "dejavu");
   if (dejavu?.kind === "dejavu") {
+    if (dejavu.facts.comparisons.some(c => c.sampleCount < 20)) add("uncertainty", "20件未満の少数標本を含み、中央値や上昇割合は不安定です。複数の事例数設定を比べて確認してください。", [dejavu.evidenceId]);
     for (const c of dejavu.facts.comparisons) add("dejavu", `上位${c.requestedCount}件の設定で、${c.horizon}営業日後の実際の標本は${c.sampleCount}件。中央値${pct(c.medianReturn)}、上昇割合${pct(c.upRatio)}、分位点${c.percentileRange?.map(pct).join("〜") ?? "確認できません"}です。上昇割合は未校正の過去分布です。`, [dejavu.evidenceId]);
     for (const e of dejavu.facts.examples) add("dejavu", `表示事例の類似度${e.similarity.toFixed(2)}。最も近い要素は${e.common && dnaLabels.has(e.common) ? e.common : "未確認"}、異なる要素は${e.different && dnaLabels.has(e.different) ? e.different : "未確認"}です。類似は将来の一致を保証しません。`, [dejavu.evidenceId]);
   } else add("dejavu", "非重複の類似事例は確認できません。履歴や取得時点を確認してください。");
   const evaluations = evidence.filter(e => e.kind === "evaluation");
   for (const e of evaluations) {
     if (e.kind !== "evaluation") continue;
-    add("reflection", `${e.facts.experiment}の過去予測：${e.facts.horizon}営業日後の予測中央値${pct(e.facts.predictedReturn)}、実績${pct(e.facts.actualReturn)}、最大下落${pct(e.facts.maxDrawdown)}。値動きだけで成功・失敗の原因は断定できません。`, [e.evidenceId]);
+    const forecast = evidence.find(f => f.kind === "forecast" && f.sourceId === e.facts.predictionId);
+    const original = forecast?.kind === "forecast" && forecast.facts.score !== null ? `予測時は${forecast.facts.score ?? "未採点"}点・${forecast.facts.classification}、一致条件は${forecast.facts.metConditions.map(c => conditions[c]).join("、") || "なし"}、リスクは${forecast.facts.risks.map(r => risks[r] ?? "未確認リスク").join("、")}でした。` : "この過去予測には底打ち条件の記録がなく、条件は確認できません。";
+    add("reflection", `${original}${e.facts.experiment}の過去予測：${e.facts.horizon}営業日後の予測中央値${pct(e.facts.predictedReturn)}、実績${pct(e.facts.actualReturn)}、最大下落${pct(e.facts.maxDrawdown)}。値動きだけで成功・失敗の原因は断定できません。`, [e.evidenceId, ...(forecast ? [forecast.evidenceId] : [])]);
   }
   if (!evaluations.length) add("reflection", "この取得時点で確認できる関連評価がなく、予測の成功・失敗は確認できません。");
   // Do not pool experiments, periods or horizons to answer the high-score question.
   const groups = new Map<string, typeof evaluations>();
   for (const e of evaluations) {
     if (e.kind !== "evaluation" || e.facts.score === null || e.facts.score < 80) continue;
-    const key = `${e.facts.experiment}／${e.facts.period}／${e.facts.horizon}営業日／${e.facts.classification}`;
+    const key = `${e.methodVersion}／${e.facts.experiment}／${e.facts.period}／${e.facts.horizon}営業日／${e.facts.classification}`;
     groups.set(key, [...(groups.get(key) ?? []), e]);
   }
   for (const [key, es] of groups) {
