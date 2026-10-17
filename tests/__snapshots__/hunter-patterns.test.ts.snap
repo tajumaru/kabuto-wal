@@ -1,0 +1,98 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`人工相場の判定時点の分類・点数・リスクを固定し、将来の成功失敗を分離する 1`] = `
+{
+  "base-building": {
+    "category": "反転兆候あり",
+    "risks": [
+      "topix_unknown",
+      "news_earnings_unchecked",
+      "long_trend_down",
+    ],
+    "score": 50,
+  },
+  "consolidation": {
+    "category": "反転兆候あり",
+    "risks": [
+      "topix_unknown",
+      "news_earnings_unchecked",
+      "long_trend_down",
+    ],
+    "score": 70,
+  },
+  "false-rebound": {
+    "category": "反転兆候あり",
+    "risks": [
+      "topix_unknown",
+      "news_earnings_unchecked",
+      "long_trend_down",
+    ],
+    "score": 70,
+  },
+  "halt": {
+    "category": "警戒",
+    "risks": [
+      "topix_unknown",
+      "news_earnings_unchecked",
+      "long_trend_down",
+      "no_trading_volume",
+    ],
+    "score": 70,
+  },
+  "revision": {
+    "category": "反転兆候あり",
+    "risks": [
+      "topix_unknown",
+      "news_earnings_unchecked",
+      "long_trend_down",
+    ],
+    "score": 70,
+  },
+  "rsi-only": {
+    "category": "警戒",
+    "risks": [
+      "topix_unknown",
+      "news_earnings_unchecked",
+      "long_trend_down",
+      "new_low",
+    ],
+    "score": 20,
+  },
+  "short": {
+    "category": "判定不能",
+    "risks": [
+      "topix_unknown",
+      "news_earnings_unchecked",
+    ],
+    "score": null,
+  },
+  "split": {
+    "category": "反転兆候あり",
+    "risks": [
+      "topix_unknown",
+      "news_earnings_unchecked",
+      "long_trend_down",
+    ],
+    "score": 70,
+  },
+  "v-recovery": {
+    "category": "反発進行中",
+    "risks": [
+      "topix_unknown",
+      "news_earnings_unchecked",
+      "long_trend_down",
+      "far_from_support",
+    ],
+    "score": 70,
+  },
+  "volume-reversal": {
+    "category": "反転兆候あり",
+    "risks": [
+      "topix_unknown",
+      "news_earnings_unchecked",
+      "long_trend_down",
+    ],
+    "score": 85,
+  },
+}
+`;
