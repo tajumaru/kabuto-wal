@@ -1,6 +1,11 @@
 import { it, expect, vi } from "vitest";
-import { publicResearchAddress, researchTarget, researchPost, type ResearchTransport } from "../apps/api/src/research-network";
+import { publicResearchAddress, researchTarget, researchPost, researchSpecial4,researchSpecial6,type ResearchTransport } from "../apps/api/src/research-network";
 import { ConfiguredResearchLlm } from "../apps/api/src/kabumaru-llm";
+it("IANA特殊用途CIDRと境界をNode標準分類で検査する",()=>{
+  for(const [network] of [...researchSpecial4,...researchSpecial6])expect(publicResearchAddress(network),network).toBe(false);
+  for(const ip of ["192.31.196.255","192.52.193.1","192.175.48.1","2001:1ff:ffff::1","2620:4f:8000:ffff::1","3fff:fff:ffff::1","fe80::1%eth0","::ffff:8.8.8.8"])expect(publicResearchAddress(ip),ip).toBe(false);
+  for(const ip of ["172.32.0.1","100.128.0.1","192.0.3.1","192.31.197.1","198.20.0.1","2001:200::1","2001:4860::8888","2606:4700::1111"])expect(publicResearchAddress(ip),ip).toBe(true);
+});
 
 it("allowlistは完全一致で、IP・localhost・特殊アドレスを拒否する", () => {
   for (const host of ["localhost","127.0.0.1","[::1]","10.0.0.1","169.254.169.254","other.example","api.example.evil"]) {

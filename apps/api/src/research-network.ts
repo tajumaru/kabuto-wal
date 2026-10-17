@@ -1,23 +1,22 @@
 import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
+import { isIP,BlockList } from "node:net";
 import { request, type RequestOptions } from "node:https";
 
 export type Destination = { address: string; family: number };
 export type Resolver = (host: string) => Promise<Destination[]>;
 export const resolveResearchHost: Resolver = host => lookup(host, { all: true, verbatim: true });
-// Reject special-purpose space, including IPv4-mapped IPv6 and transition ranges.
+// IANA special-purpose registries, checked 2026-10-17 (registry update 2025-10-09).
+// Even globally reachable protocol/anycast exceptions are not LLM destinations.
+const special4=new BlockList(),special6=new BlockList(),global6=new BlockList();
+export const researchSpecial4:[string,number][]=[["0.0.0.0",8],["10.0.0.0",8],["100.64.0.0",10],["127.0.0.0",8],["169.254.0.0",16],["172.16.0.0",12],["192.0.0.0",24],["192.0.2.0",24],["192.31.196.0",24],["192.52.193.0",24],["192.88.99.0",24],["192.168.0.0",16],["192.175.48.0",24],["198.18.0.0",15],["198.51.100.0",24],["203.0.113.0",24],["224.0.0.0",4],["240.0.0.0",4]];
+export const researchSpecial6:[string,number][]=[["::",128],["::1",128],["::ffff:0:0",96],["64:ff9b::",96],["64:ff9b:1::",48],["100::",64],["100:0:0:1::",64],["2001::",23],["2001:db8::",32],["2002::",16],["2620:4f:8000::",48],["3fff::",20],["5f00::",16],["fc00::",7],["fe80::",10],["ff00::",8]];
+for(const [network,prefix] of researchSpecial4)special4.addSubnet(network,prefix,"ipv4");
+for(const [network,prefix] of researchSpecial6)special6.addSubnet(network,prefix,"ipv6");
+global6.addSubnet("2000::",3,"ipv6");
 export function publicResearchAddress(address: string) {
-  if (isIP(address) === 4) {
-    const [a,b,c] = address.split(".").map(Number);
-    return !(a === 0 || a === 10 || a === 127 || a >= 224 ||
-      (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) || (a === 192 && (b === 168 || b === 0 || (b === 88 && c === 99))) ||
-      (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) || (a === 203 && b === 0 && c === 113));
-  }
-  if (isIP(address) !== 6) return false;
-  // Conservative global unicast only; exclude IETF, documentation, 6to4, Teredo.
-  const first = parseInt(address.split(":")[0],16);
-  return first >= 0x2000 && first <= 0x3fff && first !== 0x2001 && first !== 0x2002 && first !== 0x3fff;
+  if(address.includes("%"))return false;
+  if(isIP(address)===4)return !special4.check(address,"ipv4");
+  return isIP(address)===6&&global6.check(address,"ipv6")&&!special6.check(address,"ipv6");
 }
 export function researchTarget(raw: string, allowed: string[]) {
   const url = new URL(raw);
