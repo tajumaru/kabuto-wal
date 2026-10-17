@@ -2,7 +2,7 @@ import { hunterDetailKey } from "./hunter-consistency";
 import { z } from "zod";
 import type { Service } from "./service";
 import { predictionSchema, targetDate, evaluate, type Calendar, type Prediction } from "../../../packages/core/index";
-import { HUNTER_FORECAST_METHOD } from "../../../packages/core/hunter-method";
+import { hunterDistribution, hunterScoreBand, HUNTER_FORECAST_METHOD } from "../../../packages/core/hunter-method";
 import { hunterCode, hunterJobSchema } from "../../../packages/core/hunter-schema";
 import { hash } from "../../../packages/integrations/adjusted-series";
 import { MarketIngestion } from "../../../packages/integrations/market-ingestion";
@@ -102,19 +102,35 @@ export async function evaluateHunterDue(service: Service, now = new Date()) {
   }
   return count;
 }
-export async function hunterEvaluationSummary(service: Service) {
-  const groups = new Map<string, { key: string; total: number; pending: number; available: number; evaluated: number; directionRate: number | null; meanReturn: number | null; meanError: number | null; worstDrawdown: number | null; direction: number; returns: number; errors: number }>();
+export async function hunterEvaluationSummary(service: Service, now = new Date()) {
+  type Group = { key: string; mode: string; experiment: string; horizon: number; classification: string; band: string; period: string; methodVersion: string;
+    total: number; pending: number; available: number; evaluated: number; direction: number; returns: number[]; errors: number[]; drawdowns: number[] };
+  const groups = new Map<string, Group>();
   for (const p of await service.predictions()) {
     if (p.methodVersion !== HUNTER_FORECAST_METHOD || !p.hunter) continue;
-    const score = p.hunter.analysis.score ?? 0, band = `${Math.floor(score/20)*20}-${Math.min(100,Math.floor(score/20)*20+19)}`;
-    const key = [p.mode, p.hunter.experiment, p.horizonSessions, p.hunter.classification, band].join("/");
-    const g = groups.get(key) ?? { key, total: 0, pending: 0, available: 0, evaluated: 0, directionRate: null, meanReturn: null, meanError: null, worstDrawdown: null, direction: 0, returns: 0, errors: 0 };
+    const band = hunterScoreBand(p.hunter.analysis.score), period = p.dataAsOf.slice(0,7);
+    const key = [p.mode, p.hunter.experiment, p.horizonSessions, p.hunter.classification, band, period, p.methodVersion].join("/");
+    const g: Group = groups.get(key) ?? { key, mode: p.mode, experiment: p.hunter.experiment, horizon: p.horizonSessions, classification: p.hunter.classification,
+      band, period, methodVersion: p.methodVersion, total: 0, pending: 0, available: 0, evaluated: 0, direction: 0, returns: [], errors: [], drawdowns: [] };
     g.total++;
     const e = p.evaluations.at(-1);
-    if (e) { g.evaluated++; g.direction += Number(e.directionMatch); g.returns += e.actualReturn; g.errors += e.returnError; g.worstDrawdown = Math.min(g.worstDrawdown ?? 0, e.maxDrawdown ?? 0); }
-    else if (await assessHunter(service, predictionSchema.parse(p))) g.available++;
+    if (e) {
+      g.evaluated++; g.direction += Number(e.directionMatch); g.returns.push(e.actualReturn); g.errors.push(e.returnError);
+      if (e.maxDrawdown !== undefined && e.maxDrawdown !== null) g.drawdowns.push(e.maxDrawdown);
+    } else if (await assessHunter(service, predictionSchema.parse(p), now)) g.available++;
     else g.pending++;
     groups.set(key,g);
   }
-  return [...groups.values()].map(g => ({ ...g, directionRate: g.evaluated ? g.direction/g.evaluated : null, meanReturn: g.evaluated ? g.returns/g.evaluated : null, meanError: g.evaluated ? g.errors/g.evaluated : null }));
+  return [...groups.values()].map(g => {
+    const { returns, errors, drawdowns, direction, ...counts } = g;
+    return { ...counts, directionRate: g.evaluated ? direction/g.evaluated : null,
+      meanReturn: g.evaluated ? returns.reduce((a,b) => a+b,0)/g.evaluated : null,
+      medianReturn: hunterDistribution(returns).median,
+      upRatio: g.evaluated ? returns.filter(r => r>0).length/g.evaluated : null,
+      meanError: g.evaluated ? errors.reduce((a,b) => a+b,0)/g.evaluated : null,
+      meanAbsoluteError: g.evaluated ? errors.reduce((a,b) => a+Math.abs(b),0)/g.evaluated : null,
+      worstDrawdown: drawdowns.length ? Math.min(...drawdowns) : null,
+      drawdownDistribution: hunterDistribution(drawdowns), drawdownCount: drawdowns.length,
+      lowSample: g.evaluated < 20, eligible: g.available+g.evaluated };
+  });
 }

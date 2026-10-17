@@ -6,6 +6,7 @@ import { Service } from "../apps/api/src/service";
 import { HunterJobs } from "../apps/api/src/hunter-jobs";
 import { recordHunterForecast, hunterEvaluationSummary } from "../apps/api/src/hunter-journal";
 import { seedHunterRaw } from "./hunter-fixture";
+import { hunterScoreBand, hunterDistribution } from "../packages/core/hunter-method";
 import { walkForwardHunter } from "../apps/api/src/hunter-backtest";
 
 it("原本を不変保存し、期限後評価を別保存して過去研究と実運用を分離する", async () => {
@@ -33,5 +34,28 @@ it("原本を不変保存し、期限後評価を別保存して過去研究と�
     const walk = await walkForwardHunter(service, { from: f.asOf, to: f.asOf, step: 20 });
     expect(walk.steps[0]).toMatchObject({ asOf: f.asOf, records: 3, excluded: 0 });
     expect((await walkForwardHunter(service, { from: f.asOf, to: f.asOf, step: 20 })).steps).toEqual(walk.steps);
+    const source = (await service.predictions()).find(p => p.evaluations.length)!;
+    const samples = [0,39,40,59,60,79,80,100].flatMap((score, i) => ["retrospective", "walk-forward", "prospective"].map(experiment => ({
+      ...source, mode: experiment === "prospective" ? "live" : experiment === "walk-forward" ? "backtest" : "research",
+      dataAsOf: i%2 ? "2026-09-01" : "2026-10-01",
+      hunter: { ...source.hunter!, experiment, analysis: { ...source.hunter!.analysis, score } },
+      evaluations: [{ ...source.evaluations[0], actualReturn: i%2 ? -0.2 : 0.1, returnError: i%2 ? 0.3 : -0.1, maxDrawdown: i%2 ? -0.3 : -0.05 }],
+    })));
+    const spy = vi.spyOn(service, "predictions").mockResolvedValue(samples as Awaited<ReturnType<Service["predictions"]>>);
+    const grouped = await hunterEvaluationSummary(service);
+    expect(grouped).toHaveLength(24);
+    expect(new Set(grouped.map(g => g.band))).toEqual(new Set(["0-39","40-59","60-79","80-100"]));
+    expect(grouped.every(g => g.lowSample && g.eligible === 1 && g.evaluated === 1)).toBe(true);
+    expect(grouped.filter(g => g.period === "2026-09").every(g => g.meanReturn === -0.2 && g.upRatio === 0 && g.medianReturn === -0.2)).toBe(true);
+    expect(grouped.filter(g => g.period === "2026-10").every(g => g.meanReturn === 0.1 && g.upRatio === 1)).toBe(true);
+    spy.mockRestore();
+
   } finally { await rm(dir, { recursive: true, force: true }); vi.unstubAllEnvs(); }
+});
+
+it("スコア帯の境界と最大下落分布の補間を固定する", () => {
+  expect([0,39,40,59,60,79,80,100,null].map(hunterScoreBand)).toEqual(["0-39","0-39","40-59","40-59","60-79","60-79","80-100","80-100","unknown"]);
+  expect(hunterDistribution([]).median).toBeNull();
+  expect(hunterDistribution([-0.4,0,-0.2]).median).toBe(-0.2);
+  expect(hunterDistribution([-0.4,0]).median).toBe(-0.2);
 });

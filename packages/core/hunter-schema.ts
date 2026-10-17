@@ -80,5 +80,10 @@ export type HunterFilter = z.infer<typeof hunterFilterSchema>;
 export const hunterForecastResponseSchema = z.object({ records: z.array(predictionSchema), note: z.string() });
 export const hunterSummarySchema = z.object({ groups: z.array(z.object({
   key: z.string(), total: z.number(), pending: z.number(), available: z.number(), evaluated: z.number(),
+  mode: z.string().optional(), experiment: z.string().optional(), horizon: z.number().optional(), classification: z.string().optional(),
+  band: z.string().optional(), period: z.string().optional(), methodVersion: z.string().optional(),
+  medianReturn: z.number().nullable().optional(), upRatio: z.number().nullable().optional(), meanAbsoluteError: z.number().nullable().optional(),
+  lowSample: z.boolean().optional(), eligible: z.number().optional(), drawdownCount: z.number().optional(),
+  drawdownDistribution: z.object({ min: z.number().nullable(), p25: z.number().nullable(), median: z.number().nullable(), p75: z.number().nullable(), max: z.number().nullable() }).optional(),
   directionRate: z.number().nullable(), meanReturn: z.number().nullable(), meanError: z.number().nullable(), worstDrawdown: z.number().nullable(),
 })) });
