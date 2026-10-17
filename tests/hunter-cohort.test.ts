@@ -15,7 +15,7 @@ it("完了時点の候補と対照を不変に固定し、不完全ジョブ・�
     await expect(createCohort(service,{jobId:job.id})).rejects.toThrow("完了");
     await engine.run(job.id,{maxSymbols:1});await expect(createCohort(service,{jobId:job.id})).rejects.toThrow("完了");
     await engine.resume(job.id);await engine.run(job.id);
-    const a=await createCohort(service,{jobId:job.id}),b=await createCohort(service,{jobId:job.id});expect(b).toEqual(a);
+    const [a,b]=await Promise.all([createCohort(service,{jobId:job.id}),createCohort(service,{jobId:job.id})]);expect(b).toEqual(a);expect(a.scoringVersions.length).toBeGreaterThan(0);
     const saved=await readCohort(service,a.cohortId);expect(saved.members).toHaveLength(4);expect(saved.members.filter(m=>m.eligible)).toHaveLength(1);
     expect(saved.members.filter(m=>!m.eligible).every(m=>m.classification==="判定不能")).toBe(true);
     await expect(createCohort(service,{jobId:job.id,experiment:"prospective"})).rejects.toThrow("事前");

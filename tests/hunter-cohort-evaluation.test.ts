@@ -18,6 +18,8 @@ it("同一調整系列の1/5/20営業日を、欠損・利用時刻・再下落�
   }
   expect(cohortPathOutcome(path.filter((_,i)=>i!==2),base,dates[5],calendar(),"2026-10-17T00:00:00.000Z")).toBeNull();
   expect(cohortPathOutcome(path,base,dates[5],calendar(),`${dates[5]}T00:00:00.000Z`)).toBeNull();
+  expect(cohortPathOutcome(path.map(b=>b.sessionDate===dates[5]?{...b,availableAt:`${dates[5]}T00:00:00-12:00`}:b),base,dates[5],calendar(),`${dates[5]}T09:00:00.000Z`)).toBeNull();
+  expect(cohortPathOutcome(path.map(b=>b.sessionDate===dates[5]?{...b,availableAt:"0"}:b),base,dates[5],calendar(),"2026-10-17T00:00:00.000Z")).toBeNull();
   const split=path.map(b=>({...b,adjClose:b.adjClose!/2}));expect(cohortPathOutcome(split,base,dates[5],calendar(),"2026-10-17T00:00:00.000Z")!.actualReturn).toBeCloseTo(0.05);
 });
 it("評価は冪等な追加保存で、訂正価格は新revision、期限前は価格を読まない",async()=>{

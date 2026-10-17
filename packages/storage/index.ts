@@ -50,6 +50,10 @@ export class Store {
     }
   }
   async write(key: string, data: unknown, immutable = false) {
+    const tracked=/^(predictions|evaluations|memories|sync|prices|revisions|market|research\/(?:results|chats|notebooks))\//.test(key);
+    const token=randomUUID(),dirty=path.join(this.root,".store-mutations",token);
+    if(tracked){await fs.mkdir(path.dirname(dirty),{recursive:true});await fs.writeFile(dirty,String(process.pid),{flag:"wx"});}
+    try {
     const dest = this.path(key);
     await fs.mkdir(path.dirname(dest), { recursive: true });
     if (immutable) {
@@ -86,6 +90,20 @@ export class Store {
         await dir.close();
       }
     }
+    } finally {
+      if(tracked){await fs.writeFile(path.join(this.root,".store-generation"),token);await fs.rm(dirty,{force:true});}
+    }
+  }
+  // App writes publish a generation before releasing their mutation marker. A
+  // reader never trusts a generation while any source write is in progress.
+  // A missing/dirty marker uses the legacy full-scan path, including old stores.
+  async generation():Promise<string|null>{
+    try {
+      const before=await fs.readFile(path.join(this.root,".store-generation"),"utf8");
+      const dirty=await fs.readdir(path.join(this.root,".store-mutations"));
+      const after=await fs.readFile(path.join(this.root,".store-generation"),"utf8");
+      return !dirty.length&&before===after&&/^[a-f0-9-]{36}$/.test(after)?after:null;
+    }catch{return null;}
   }
   async files(prefix: string): Promise<string[]> {
     const out: string[] = [];

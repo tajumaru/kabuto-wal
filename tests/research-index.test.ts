@@ -14,6 +14,7 @@ it("派生索引を再構築し、銘柄・日付・方式・削除世代を識�
     for (let i=0;i<100;i++) await s.store.write(`memories/m${i}.json`,{ recordId:`m${i}`,kind:"hunter_reflection",providerCode:i%2?"72030":"67580",dataAsOf:"2026-10-09",createdAt:"2026-10-09T00:00:00.000Z",mode:"demo",active:true });
     const first = await researchRecordIndex(s);
     expect(first.entries).toHaveLength(100);
+    const scan=vi.spyOn(s.store,"files");await researchRecordIndex(s);expect(scan).not.toHaveBeenCalled();scan.mockRestore();
     expect((await researchRecords(s,"72030","2026-10-09")).memories).toHaveLength(50);
     expect((await researchRecords(s,"72030","2026-10-08")).memories).toHaveLength(0);
     expect((await researchRecords(s,"72030","2026-10-09","wrong")).memories).toHaveLength(0);

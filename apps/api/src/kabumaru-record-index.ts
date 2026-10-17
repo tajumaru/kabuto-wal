@@ -8,10 +8,15 @@ const entrySchema = z.object({ key: z.string(), code: z.string(), asOf: z.string
 const indexSchema = z.object({ version: z.literal(1), generation: z.string(), sourceGeneration:z.string(), checksum: z.string(), entries: z.array(entrySchema) });
 type Index = z.infer<typeof indexSchema>;
 const inflight = new WeakMap<Service, Promise<Index>>();
+const warm=new WeakMap<Service,{token:string;stamp:string;index:Index}>();
+async function indexStamp(service:Service){try{const s=await stat(service.store.path("indexes/kabumaru-records.json"),{bigint:true});return `${s.size}/${s.mtimeNs}/${s.ctimeNs}`;}catch{return "";}}
 // Derived metadata only. Stat fingerprints detect writes by other processes and repaired JSON.
 export async function researchRecordIndex(service: Service): Promise<Index> {
   const pending = inflight.get(service); if (pending) return pending;
   const task = (async () => {
+    const token=await service.store.generation(),previous=warm.get(service);
+    if(process.env.RESEARCH_INDEX_FULL_AUDIT!=="true"&&token&&previous?.token===token&&previous.stamp===await indexStamp(service))return structuredClone(previous.index);
+    const remember=async(result:Index)=>{if(token&&token===await service.store.generation())warm.set(service,{token,stamp:await indexStamp(service),index:structuredClone(result)});return result;};
     const files = (await Promise.all(["predictions","evaluations","memories","sync","research/results","research/chats"].map(p => service.store.files(p)))).flat().sort();
     const descriptors: unknown[] = [];
     for (let i=0;i<files.length;i+=32) descriptors.push(...await Promise.all(files.slice(i,i+32).map(async key => {
@@ -23,10 +28,10 @@ export async function researchRecordIndex(service: Service): Promise<Index> {
     let saved: unknown = null;
     try { saved = await service.store.read("indexes/kabumaru-records.json",null); } catch { /* Rebuild corrupt derived JSON. */ }
     const parsed = indexSchema.safeParse(saved);
-    if (parsed.success && parsed.data.generation === generation && parsed.data.checksum === hash(parsed.data.entries)) return parsed.data;
+    if (parsed.success && parsed.data.generation === generation && parsed.data.checksum === hash(parsed.data.entries)) return remember(parsed.data);
     if (parsed.success && parsed.data.sourceGeneration===sourceGeneration && parsed.data.checksum===hash(parsed.data.entries)) {
       const result={...parsed.data,generation};
-      await service.store.lock(()=>service.store.write("indexes/kabumaru-records.json",result));return result;
+      await service.store.lock(()=>service.store.write("indexes/kabumaru-records.json",result));return remember(result);
     }
     const entries: Index["entries"] = [];
     const sources = files.filter(isSource);
@@ -43,7 +48,7 @@ export async function researchRecordIndex(service: Service): Promise<Index> {
     entries.sort((a,b) => a.asOf.localeCompare(b.asOf) || a.key.localeCompare(b.key));
     const result = { version:1 as const,generation,sourceGeneration,entries,checksum:hash(entries) };
     await service.store.lock(() => service.store.write("indexes/kabumaru-records.json",result));
-    return result;
+    return remember(result);
   })();
   inflight.set(service,task);
   try { return await task; } finally { inflight.delete(service); }

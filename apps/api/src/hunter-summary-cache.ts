@@ -19,17 +19,18 @@ export function readHunterSummary<T>(service: Service, key: string, now: Date): 
   const saved = cache.get(service), at = now.getTime();
   return saved?.key === key && at >= saved.at && at < saved.until ? structuredClone(saved.result) as T : null;
 }
-export async function saveHunterSummary<T>(service: Service, key: string, now: Date, files: string[], result: T) {
+export async function saveHunterSummary<T>(service: Service, key: string, now: Date, files: string[], result: T, additionalValues:unknown[] = []) {
   // Expire exactly when an already-stored future observation becomes known, not just after a TTL.
   let until = Date.parse(`${now.toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" })}T15:00:00.000Z`);
   const visit = (value: unknown) => {
     if (!value || typeof value !== "object") return;
     for (const [key,v] of Object.entries(value)) {
-      if ((key === "availableAt" || key === "observedAt") && typeof v === "string") {
+      if (["availableAt","observedAt","createdAt","generatedAt","recordedAt","cutoff","evaluatedCutoff"].includes(key) && typeof v === "string") {
         const time = Date.parse(v); if (time > now.getTime()) until = Math.min(until, time);
       } else if (typeof v === "object") visit(v);
     }
   };
+  visit(additionalValues);
   for (let i=0;i<files.length;i+=32) for (const value of await Promise.all(files.slice(i,i+32).map(f => service.store.read<unknown>(f)))) visit(value);
   // One bounded result per Service. Nothing survives a restart or leaks across data roots.
   if (Buffer.byteLength(JSON.stringify(result)) <= 4*1024*1024) cache.set(service, { key, at: now.getTime(), until, result: structuredClone(result) });
