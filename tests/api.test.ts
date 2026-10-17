@@ -16,7 +16,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await app.close();
-  await rm(root, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   delete process.env.OWNER_ADDRESS;
   delete process.env.SESSION_SECRET;
 });

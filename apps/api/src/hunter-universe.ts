@@ -24,6 +24,7 @@ export async function buildHunterUniverse(service: Service, asOf: string, cutoff
     const snapshots = [];
     for (const file of await service.store.files(`market/master-snapshots/${asOf}`)) {
       const m = await service.store.read<{ date: string; rows: unknown[]; observedAt: string }>(file);
+      if (!file.endsWith(`/${hash(m.rows)}.json`)) throw Error("マスターsnapshotのhashが一致しません");
       if (m.date === asOf && Number.isFinite(Date.parse(m.observedAt)) && m.observedAt <= cutoff) snapshots.push(m);
     }
     snapshots.sort((a,b) => b.observedAt.localeCompare(a.observedAt) || hash(a.rows).localeCompare(hash(b.rows)));

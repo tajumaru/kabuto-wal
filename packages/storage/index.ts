@@ -139,7 +139,7 @@ export class Store {
     try {
       return await fn();
     } finally {
-      await fs.rm(lock, { recursive: true, force: true });
+      await fs.rm(lock, { recursive: true, force: true, maxRetries: 3, retryDelay: 20 });
     }
   }
   async rebuild() {

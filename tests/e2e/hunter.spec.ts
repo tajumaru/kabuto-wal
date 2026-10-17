@@ -1,0 +1,24 @@
+import { test, expect } from "@playwright/test";
+test("保存済み市場を走査し、URLフィルター・詳細・モバイル・デジャヴ導線を維持", async ({ page }) => {
+  await page.goto("/bottom/hunter?asOf=2026-10-09");
+  await expect(page.getByRole("heading", { name: "底打ちハンター", exact: true })).toBeVisible();
+  await page.getByText("取得・走査ジョブを明示的に開始", { exact: true }).click();
+  await page.getByRole("button", { name: "ジョブを開始", exact: true }).click();
+  await expect(page.locator(".hunter-desktop tbody tr")).toHaveCount(4, { timeout: 120000 });
+  await expect(page.getByLabel("カバレッジ")).toContainText("対象 4銘柄");
+  const min = page.getByLabel("スコア下限", { exact: true });
+  await min.fill("100"); await expect(page).toHaveURL(/minScore=100/);
+  await page.goBack(); await expect(min).toHaveValue("");
+  await expect(page.locator(".hunter-desktop tbody tr")).toHaveCount(4);
+  await page.locator(".hunter-desktop tbody tr").filter({ hasText: "架空モビリティ" }).getByRole("button", { name: "底打ち詳細を見る" }).click();
+  await expect(page.getByRole("heading", { name: "架空モビリティ 底打ち詳細" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "80営業日のローソク足・5日平均・20日平均・出来高" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "デジャヴ未来シナリオ", exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".hunter-mobile > article")).toHaveCount(4);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: "test-results/hunter-mobile.png", fullPage: true });
+  await page.locator(".hunter-mobile > article").filter({ hasText: "架空モビリティ" }).getByRole("link", { name: "デジャヴ相場を見る" }).click();
+  await expect(page).toHaveURL(/hunterJobId=/);
+  await expect(page.getByRole("heading", { name: "デジャヴ未来シナリオ", exact: true })).toBeVisible();
+});

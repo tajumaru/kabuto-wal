@@ -8,6 +8,7 @@
     "start": "tsx apps/api/src/main.ts",
     "job": "tsx apps/api/src/job.ts",
     "job:market": "tsx scripts/market-ingest.ts",
+    "job:hunter": "tsx scripts/hunter.ts",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

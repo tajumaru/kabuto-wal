@@ -24,5 +24,11 @@ it("ページング・共有応答・詳細・不正入力・既存API互換を�
     expect((await app.inject("/api/bottom/analysis?code=72030&asOf=2026-10-09")).json().conditions).toHaveLength(10);
     expect((await app.inject({ method: "POST", url: "/api/bottom/hunter/jobs", headers: { origin: "https://bad.invalid" }, payload: { asOf: "2026-10-09" } })).statusCode).toBe(403);
     expect((await app.inject(`/api/bottom/hunter/jobs/${job.id}`)).json().status).toBe("completed");
+    const master = await service.store.read<{ providerCode: string }[]>("market/master.json");
+    await service.store.write("market/master.json", master.filter(m => m.providerCode !== "72030"));
+    expect((await app.inject({ method: "POST", url: "/api/watchlist", payload: { code: "72030", hunterJobId: job.id } })).statusCode).toBe(200);
+    expect((await service.store.read<{ providerCode: string }[]>("market/master.json")).some(m => m.providerCode === "72030")).toBe(true);
+    await service.store.write("settings/watchlist.json", { codes: Array.from({ length: 10 }, (_,i) => String(10000+i*10)) });
+    expect((await app.inject({ method: "POST", url: "/api/watchlist", payload: { code: "72030", hunterJobId: job.id } })).json().error).toBe("監視は10銘柄まで");
   } finally { await app.close(); await rm(root, { recursive: true, force: true }); }
 });

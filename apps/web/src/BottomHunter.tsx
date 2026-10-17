@@ -19,7 +19,7 @@ export function BottomHunter({ request }: { request: Request }) {
   const query = new URLSearchParams(parsed.success ? Object.fromEntries(Object.entries(parsed.data).filter(([,v]) => v !== undefined).map(([k,v]) => [k,String(v)])) : {});
   const code = params.get("code") ?? "";
   function update(key: string, value: string) {
-    setParams(current => { const next = new URLSearchParams(current); if (value) next.set(key, value); else next.delete(key); if (key !== "page" && key !== "code") next.delete("page"); return next; });
+    setParams(current => { const next = new URLSearchParams(current); if (value) next.set(key, value); else next.delete(key); if (key !== "page" && key !== "code") next.delete("page"); if (key === "asOf") { next.delete("jobId"); next.delete("code"); } return next; });
   }
   const status = useQuery({ queryKey: ["hunter-status"], queryFn: async () => hunterStatusSchema.parse(await request("/bottom/hunter/status")),
     refetchInterval: q => q.state.data?.jobs.some(j => j.status === "queued" || j.status === "running") ? 2000 : false });
@@ -53,7 +53,7 @@ export function BottomHunter({ request }: { request: Request }) {
       <Link to={`/bottom?${q}`}>個別解析</Link>
       <Link to={`/similar?${q}&hunterJobId=${row.jobId}`}>デジャヴ相場を見る</Link>
       <button disabled={busy || !row.candidate} onClick={() => void act("/bottom/hunter/forecasts", { jobId: row.jobId, code: row.code, recordingMode })}>予測仮説を記録する</button>
-      <button disabled={busy} onClick={() => void act("/watchlist", { code: row.code })}>ウォッチリストに追加</button>
+      <button disabled={busy} onClick={() => void act("/watchlist", { code: row.code, hunterJobId: row.jobId })}>ウォッチリストに追加</button>
     </div>;
   }
   return <section className="hunter-page">

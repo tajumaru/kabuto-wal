@@ -6,6 +6,7 @@ import { Service } from "../apps/api/src/service";
 import { HunterJobs } from "../apps/api/src/hunter-jobs";
 import { recordHunterForecast, hunterEvaluationSummary } from "../apps/api/src/hunter-journal";
 import { seedHunterRaw } from "./hunter-fixture";
+import { walkForwardHunter } from "../apps/api/src/hunter-backtest";
 
 it("原本を不変保存し、期限後評価を別保存して過去研究と実運用を分離する", async () => {
   vi.stubEnv("JQUANTS_PLAN", "Light");
@@ -29,5 +30,8 @@ it("原本を不変保存し、期限後評価を別保存して過去研究と�
     expect((await hunterEvaluationSummary(service)).reduce((s,g) => s+g.evaluated,0)).toBe(6);
     expect((await service.predictions()).every(p => p.evaluations.length === 1 && p.evaluations[0].maxDrawdown <= 0)).toBe(true);
     expect(JSON.stringify(await Promise.all(first.records.map(p => service.store.read(`predictions/${p.predictionId}/original.json`))))).toBe(originals);
+    const walk = await walkForwardHunter(service, { from: f.asOf, to: f.asOf, step: 20 });
+    expect(walk.steps[0]).toMatchObject({ asOf: f.asOf, records: 3, excluded: 0 });
+    expect((await walkForwardHunter(service, { from: f.asOf, to: f.asOf, step: 20 })).steps).toEqual(walk.steps);
   } finally { await rm(dir, { recursive: true, force: true }); vi.unstubAllEnvs(); }
 });

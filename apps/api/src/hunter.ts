@@ -6,10 +6,19 @@ import { searchDejavuContext } from "./hunter-research";
 import { recordHunterForecast, hunterEvaluationSummary } from "./hunter-journal";
 import { HUNTER_FORECAST_METHOD } from "../../../packages/core/hunter-method";
 import { explainBottom } from "../../../packages/core/hunter";
-import { hunterCode, hunterFilterSchema, hunterRankingsSchema, hunterStatusSchema, hunterDetailSchema, hunterJobSchema, type HunterCoverage, type HunterRow } from "../../../packages/core/hunter-schema";
+import { hunterCode, hunterFilterSchema, hunterRankingsSchema, hunterStatusSchema, hunterDetailSchema, hunterJobSchema, hunterRowSchema, type HunterCoverage, type HunterRow } from "../../../packages/core/hunter-schema";
 import type { BottomAnalysis } from "../../../packages/core/bottom-schema";
 
 export const HUNTER_BASE = "market/hunter";
+// Called inside the existing watchlist writer lock, after the ten-stock limit check.
+export async function ensureHunterWatchMaster(service: Service, code: string, jobId: string, master: { providerCode: string; name: string; displayCode?: string }[]) {
+  const job = hunterJobSchema.parse(await service.store.read(`${HUNTER_BASE}/jobs/${jobId}.json`));
+  if (job.mode !== (service.mode === "demo" ? "demo" : "research")) throw Error("ジョブのデータ区分が一致しません");
+  const row = hunterRowSchema.parse(await service.store.read(`${HUNTER_BASE}/rankings/${jobId}/${code}.json`));
+  if (row.code !== code || row.jobId !== jobId) throw Error("走査結果の銘柄が一致しません");
+  master.push({ providerCode: row.code, displayCode: row.code.endsWith("0") ? row.code.slice(0,-1) : row.code, name: row.name });
+  await service.store.write("market/master.json", master);
+}
 export async function hunterJobFor(service: Service, selector: { jobId?: string; asOf?: string }) {
   if (selector.jobId) return selector.jobId;
   const latest = await service.store.read<{ jobId: string } | null>(`${HUNTER_BASE}/indexes/${selector.asOf ? `dates/${selector.asOf}` : "latest"}.json`, null);

@@ -8,7 +8,7 @@ import { MarketIngestion } from "../../../packages/integrations/market-ingestion
 import { JQuants } from "../../../packages/integrations/jquants";
 import { dataWindow, planCapabilities } from "../../../packages/integrations/jquants-plan";
 import { buildHunterUniverse } from "./hunter-universe";
-import { buildHunterIndex, readHunterObservations, type HunterIndex } from "./hunter-index";
+import { buildHunterIndex, readHunterObservations, hunterShard, hunterShardReader, type HunterIndex } from "./hunter-index";
 import { analyzeBottom } from "./bottom";
 
 const base = "market/hunter";
@@ -96,7 +96,11 @@ export class HunterJobs {
     try {
       job = await this.acquire(id); if (!job) return await this.get(id);
       const token = job.lease!.token;
-      const cancelled = async () => (await this.get(id)).cancelRequested;
+      let lastHeartbeat = this.now().getTime();
+      const cancelled = async () => {
+        if (this.now().getTime() - lastHeartbeat > 60000) { await this.patch(id, token, {}); lastHeartbeat = this.now().getTime(); }
+        return (await this.get(id)).cancelRequested;
+      };
       if (job.input.kind !== "scan") {
         await this.acquireMarket(job, cancelled);
         // A new acquisition's data did not exist at job start. Freeze after acquisition.
@@ -114,7 +118,8 @@ export class HunterJobs {
       let processedThisRun = 0;
       const allRows = await this.rows(id);
       const done = new Set(allRows.map(r => r.code));
-      const pending = entries.filter(e => !done.has(e.code));
+      const pending = entries.filter(e => !done.has(e.code)).sort((a,b) => Number(hunterShard(a.code))-Number(hunterShard(b.code)) || a.code.localeCompare(b.code));
+      const loadShard = hunterShardReader(this.service);
       for (let i = 0; i < pending.length; i += job.input.concurrency) {
         if (await cancelled()) break;
         const remaining = options.maxSymbols === undefined ? job.input.concurrency : Math.max(0, Math.min(job.input.concurrency, options.maxSymbols - processedThisRun));
@@ -122,7 +127,7 @@ export class HunterJobs {
         await Promise.all(pending.slice(i, i + remaining).map(async entry => {
           const rowKey = `${base}/rankings/${id}/${entry.code}.json`;
           if (await this.service.store.read(rowKey, null)) return;
-          const { row, analysis } = await this.screen(job!, index, entry, cal);
+          const { row, analysis } = await this.screen(job!, index, entry, cal, loadShard);
           await this.service.store.lock(async () => {
             if (!(await this.service.store.read(rowKey, null))) {
               const detailKey = `${base}/details/${index.id}/${entry.code}.json`;
@@ -159,14 +164,17 @@ export class HunterJobs {
     for (const file of (await this.service.store.files(`${base}/rankings/${id}`)).filter(f => !f.endsWith("/index.json"))) rows.push(hunterRowSchema.parse(await this.service.store.read(file)));
     return rows;
   }
-  private async screen(job: HunterJob, index: HunterIndex, entry: HunterUniverse["entries"][number], cal: Calendar) {
+  private async screen(job: HunterJob, index: HunterIndex, entry: HunterUniverse["entries"][number], cal: Calendar, loadShard: ReturnType<typeof hunterShardReader>) {
     const cache = await this.service.store.read<{ analysis: Awaited<ReturnType<typeof analyzeBottom>>; row: HunterRow } | null>(`${base}/details/${index.id}/${entry.code}.json`, null);
     if (cache) return { ...cache, row: { ...cache.row, jobId: job.id } };
+    let lastSession: string | null;
     let continuousSessions = 0, acquisitionStatus: HunterRow["acquisitionStatus"] = "missing", failure: string | undefined;
     let series: Awaited<ReturnType<MarketIngestion["series"]>> | null = null;
     if (this.service.mode !== "demo") {
-      const indexed = await readHunterObservations(this.service, index, entry.code);
+      const indexed = await readHunterObservations(this.service, index, entry.code, loadShard);
       continuousSessions = indexed.continuousSessions;
+      lastSession = indexed.lastSession;
+      if (index.failedDates.length) acquisitionStatus = "failed";
       if (indexed.observations.length) try {
         const from = indexed.observations.map(r => r.row.Date).sort()[0];
         series = await new MarketIngestion(this.service.store, null, process.env.JQUANTS_PLAN || "Free").series(entry.code, job.input.asOf, job.cutoff, from, indexed.observations);
@@ -175,6 +183,7 @@ export class HunterJobs {
     } else {
       const bars = (await this.service.history(entry.code)).filter(b => b.sessionDate <= job.input.asOf && b.availableAt <= job.cutoff);
       const have = new Set(bars.map(b => b.sessionDate));
+      lastSession = bars.at(-1)?.sessionDate ?? null;
       for (const date of cal.filter(d => d.open && d.date <= job.input.asOf).map(d => d.date).sort().reverse()) { if (!have.has(date)) break; continuousSessions++; }
       acquisitionStatus = bars.some(b => b.sessionDate === job.input.asOf) ? "ready" : "missing";
     }
@@ -191,7 +200,7 @@ export class HunterJobs {
       rsi: analysis.indicators?.rsi14 ?? null, drawdown: analysis.indicators?.drawdown60 ?? null, volumeRatio: analysis.indicators?.volumeRatio ?? null,
       averageTurnover20: analysis.averageTurnover20 ?? null, liquidity: analysis.liquidity,
       reasons: [...analysis.conditions.filter(c => c.met).map(c => c.label), ...analysis.reasonCodes], risks: analysis.riskCodes,
-      acquisitionStatus, lastSession: analysis.dataAsOf, continuousSessions, observedAt: analysis.observedAt });
+      acquisitionStatus, lastSession, continuousSessions, observedAt: analysis.observedAt, acquisitionError: failure });
     return { row, analysis };
   }
   private async coverage(job: HunterJob, universe: HunterUniverse, rows: HunterRow[], complete = false) {

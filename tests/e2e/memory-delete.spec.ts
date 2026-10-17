@@ -3,6 +3,7 @@ import { test, expect } from "@playwright/test";
 test("直接削除済みの記憶は旧V1の切替と再削除を表示せず、索引確認を残す", async ({ page }) => {
   await page.route("**/api/memories", route => route.fulfill({ json: [{ recordId: "a".repeat(64), text: "削除済みの方針", active: false, kind: "user_memory", createdAt: "2026-10-14T00:00:00Z", sync: { status: "deleted", blobId: "deleted-blob", directWalrusDeletion: { state: "completed", digest: "tx" } } }] }));
   await page.route("**/api/memory-delete/config", route => route.fulfill({ json: { enabled: true, owner: "0x123", network: "mainnet" } }));
+  await page.route("**/api/memory-reset/availability", route => route.fulfill({ json: { available: true } }));
   await page.goto("/memories");
   await page.getByRole("button", { name: "blob削除済み・検索索引を確認" }).click();
   const panel = page.getByRole("region", { name: "MemWalから記憶を削除" });

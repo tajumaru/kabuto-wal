@@ -2,7 +2,7 @@ import { searchDejavuContext } from "./hunter-research";
 import { notifyDejavu, saveDejavu, recallDejavu } from "./dejavu";
 import { registerDejavuJournal } from "./dejavu-journal";
 import { registerBottom } from "./bottom";
-import { registerHunter } from "./hunter";
+import { registerHunter, ensureHunterWatchMaster } from "./hunter";
 import { syncMemories, syncWarning, verifyMemoryBinding } from "../../../packages/integrations/index";
 import Fastify from "fastify";
 import { DeleteApiError, registerMemoryDelete } from "./memory-delete";
@@ -218,11 +218,14 @@ export async function createApp(service = new Service()) {
   app.get("/api/watchlist", async () => service.watch());
   app.post("/api/watchlist", async (req) =>
     service.store.lock(async () => {
-      const body = z.object({ code }).parse(req.body),
+      const body = z.object({ code, hunterJobId: id.optional() }).parse(req.body),
         ms = await service.store.read("market/master.json");
-      if (!ms.some((m: any) => m.providerCode === body.code))
+      const known = ms.some((m: { providerCode: string }) => m.providerCode === body.code);
+      if (!known && !body.hunterJobId)
         throw Error("マスターにない提供コード");
       const w = await service.store.read("settings/watchlist.json");
+      if (!w.codes.includes(body.code) && w.codes.length >= 10) throw Error("監視は10銘柄まで");
+      if (!known && body.hunterJobId) await ensureHunterWatchMaster(service, body.code, body.hunterJobId, ms);
       await service.store.write("assistant/watch-state.json", {
         codes: [...w.codes],
         revision: Date.now().toString(),

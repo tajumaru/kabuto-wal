@@ -34,6 +34,7 @@ export const hunterRowSchema = z.object({
   averageTurnover20: z.number().nullable(), liquidity: z.enum(["sufficient", "low", "unknown"]),
   reasons: z.array(z.string()), risks: z.array(z.string()), acquisitionStatus: z.enum(["ready", "missing", "failed"]),
   lastSession: z.string().nullable(), continuousSessions: z.number().int(), observedAt: z.string().nullable(),
+  acquisitionError: z.string().optional(),
 });
 export const hunterJobInputSchema = z.object({
   kind: z.enum(["scan", "initial", "update", "correction"]).default("scan"),
