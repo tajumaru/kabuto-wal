@@ -13,6 +13,7 @@ import { deterministicResearch, researchReliability } from "./kabumaru-explanati
 import { hash } from "../../../packages/integrations/adjusted-series";
 import { cachedResearch, cacheResearch } from "./kabumaru-research-cache";
 import { searchDejavuContext } from "./hunter-research";
+import { researchRecords } from "./kabumaru-record-index";
 
 const knownBy = (value: unknown, cutoff: string) => typeof value === "string" && Number.isFinite(Date.parse(value)) && Date.parse(value) <= Date.parse(cutoff);
 const evaluationSchema = z.object({ evaluationId: z.string(), predictionId: z.string(), methodVersion: z.string(), createdAt: z.string().datetime(), evaluatedCutoff: z.string().datetime().optional(),
@@ -37,16 +38,17 @@ export async function buildKabumaruResearch(service: Service, raw: unknown, now 
   // Max observedAt binds all bars in the analysis window. Later revisions cannot be relabelled as historical facts.
   const usable = detail && knownBy(detail.analysis.observedAt, cutoff) && detail.analysis.inputRevisionIds.length > 0;
   if (detail && !usable) warnings.push("このジョブの分析は当時利用可能だったrevisionを証明できません。当日以前の取得締切で再走査してください。");
-  const records = (await service.predictions()).filter(p => p.providerCode === input.code && ((p.methodVersion === HUNTER_FORECAST_METHOD && p.hunter && !p.dejavu) || (p.methodVersion === "dejavu-consensus-v1" && p.dejavu && !p.hunter)) &&
+  const indexed = await researchRecords(service, input.code, asOf, undefined, 1, 20, cutoff, [HUNTER_FORECAST_METHOD,"dejavu-consensus-v1"]);
+  const records = indexed.records.filter(p => p.providerCode === input.code && ((p.methodVersion === HUNTER_FORECAST_METHOD && p.hunter && !p.dejavu) || (p.methodVersion === "dejavu-consensus-v1" && p.dejavu && !p.hunter)) &&
     (service.mode === "demo" ? p.mode === "demo" : p.mode !== "demo") && p.dataAsOf <= asOf && knownBy(p.generatedAt, cutoff) && knownBy(p.createdAt, cutoff) && knownBy(p.hunter?.recordedAt ?? p.createdAt, cutoff) && knownBy(p.hunter?.cutoff ?? p.dejavu?.dataCutoff, cutoff));
-  const local: unknown[] = await service.store.all("memories");
-  const syncs: Record<string, unknown>[] = await service.store.all("sync");
-  const cacheKey = hash([RESEARCH_METHOD, service.mode, input.code, asOf, cutoff, job, detail, coverage, records, local, syncs, input.question]);
+  const local = indexed.memories;
+  const cacheKey = hash(["research-cache-v2", indexed.generation, RESEARCH_METHOD, service.mode, input.code, asOf, cutoff, job, detail, coverage, records, input.question]);
   if (!input.recallRemote) {
     const cached = await cachedResearch(service, cacheKey);
     if (cached && cached.generatedAt <= now.toISOString()) return cached;
   }
-  if (records.length > 20) warnings.push(`表示・説明対象は、この時点で確認できる関連予測${records.length}件のうち直近20件です。全件集計ではありません。`);
+  if (indexed.total > 20) warnings.push(`表示・説明対象は、この時点で確認できる関連予測${indexed.total}件のうち直近20件です。全件集計ではありません。`);
+  warnings.push("関連記憶の読み込みは銘柄別の直近100件、採用は最大20件です。全記憶の集計ではありません。");
   if (coverage && coverage.cutoff > cutoff) warnings.push("カバレッジ件数は後日保存されたジョブ全体の情報です。当時の取得範囲を証明するものではありません。");
   const evidence: ResearchEvidence[] = [];
   if (usable && detail) {
@@ -145,6 +147,11 @@ export async function runKabumaruResearch(service: Service, raw: unknown) {
 }
 
 export function registerKabumaruResearch(app: FastifyInstance, service: Service) {
+  app.get("/api/research/records", async req => {
+    const q = z.object({ code: researchInputSchema.shape.code, asOf: z.string().date(), method: z.string().optional(), page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(20) }).parse(req.query);
+    const selected = await researchRecords(service,q.code,q.asOf,q.method,q.page,q.pageSize);
+    return { ...selected, memories: undefined };
+  });
   app.post("/api/research", async req => runKabumaruResearch(service, req.body));
   app.post("/api/research/chat", async req => {
     const body = z.object({ research: researchInputSchema, saveHistory: z.boolean().default(false) }).strict().parse(req.body);
