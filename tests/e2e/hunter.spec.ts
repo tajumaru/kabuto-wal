@@ -4,8 +4,10 @@ test("保存済み市場を走査し、URLフィルター・詳細・モバイ�
   await page.goto("/bottom/hunter?asOf=2026-10-09");
   await expect(page.getByRole("heading", { name: "底打ちハンター", exact: true })).toBeVisible();
   console.log(`hunter initial heading ms=${(performance.now()-started).toFixed(1)}`);
-  await page.getByText("取得・走査ジョブを明示的に開始", { exact: true }).click();
-  await page.getByRole("button", { name: "ジョブを開始", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "ランキングを更新する" })).toBeVisible();
+  await page.locator(".hunter-workflow").screenshot({ path: "test-results/hunter-workflow-desktop.png" });
+  await page.locator(".hunter-filter-panel").screenshot({ path: "test-results/hunter-filters-desktop.png" });
+  await page.getByRole("button", { name: "保存済みデータを分析して反映", exact: true }).click();
   await expect(page.locator(".hunter-desktop tbody tr")).toHaveCount(4, { timeout: 120000 });
   await expect(page.getByLabel("カバレッジ")).toContainText("対象 4銘柄");
   await expect(page.getByRole("heading", { name: "データ品質" })).toBeVisible();
@@ -25,10 +27,12 @@ test("保存済み市場を走査し、URLフィルター・詳細・モバイ�
   console.log(`hunter rankings API ms=${(performance.now()-apiStarted).toFixed(1)}`);
   await expect(page.getByRole("heading", { name: "デジャヴ未来シナリオ", exact: true })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator(".hunter-filter-panel").screenshot({ path: "test-results/hunter-filters-mobile.png" });
   await expect(page.locator(".hunter-mobile > article")).toHaveCount(4);
   await expect(page.locator(".hunter-desktop tbody tr")).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: "test-results/hunter-mobile.png", fullPage: true });
+  await page.locator(".hunter-mobile > article").filter({ hasText: "架空モビリティ" }).getByText("その他", { exact: true }).click();
   await page.locator(".hunter-mobile > article").filter({ hasText: "架空モビリティ" }).getByRole("link", { name: "デジャヴ相場を見る" }).click();
   await expect(page).toHaveURL(/hunterJobId=/);
   await expect(page.getByRole("heading", { name: "デジャヴ未来シナリオ", exact: true })).toBeVisible();
@@ -39,8 +43,8 @@ test("狭い画面のページングとURL復元、初期集計抑止、エラ�
   let summaries = 0;
   page.on("request", req => { if (req.url().includes("/bottom/hunter/evaluations")) summaries++; });
   await page.goto("/bottom/hunter?asOf=2026-10-09&pageSize=1");
-  await page.getByText("取得・走査ジョブを明示的に開始", { exact: true }).click();
-  await page.getByRole("button", { name: "ジョブを開始", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "ランキングを更新する" })).toBeVisible();
+  await page.getByRole("button", { name: "保存済みデータを分析して反映", exact: true }).click();
   await expect(page.getByRole("heading", { name: "底打ちハンター", exact: true })).toBeVisible();
   await expect(page.locator(".hunter-mobile > article")).toHaveCount(1);
   expect(summaries).toBe(0);

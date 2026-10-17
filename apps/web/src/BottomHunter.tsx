@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { hunterForecastResponseSchema, hunterSummarySchema, hunterCategory, hunterDetailSchema, hunterFilterSchema, hunterJobSchema, hunterRankingsSchema, hunterStatusSchema, type HunterRow } from "../../../packages/core/hunter-schema";
+import { hunterJobInputSchema, hunterPreflightSchema, hunterForecastResponseSchema, hunterSummarySchema, hunterCategory, hunterDetailSchema, hunterFilterSchema, hunterJobSchema, hunterRankingsSchema, hunterStatusSchema, type HunterRow } from "../../../packages/core/hunter-schema";
 import { KabumaruPortrait } from "./Kabumaru";
 import { displayStockCode } from "./stock-search";
 const HunterPriceChart = lazy(() => import("./HunterPriceChart").then(m => ({ default: m.HunterPriceChart })));
@@ -39,7 +39,8 @@ export function BottomHunter({ request }: { request: Request }) {
   const ranks = useQuery({ queryKey: ["hunter-rankings", queryString], enabled: parsed.success, staleTime: 30000,
     queryFn: async () => hunterRankingsSchema.parse(await request(`/bottom/hunter/rankings?${query}`)) });
   const selectedJob = params.get("jobId") || ranks.data?.coverage?.jobId;
-  const activeJob = status.data?.jobs.find(job => job.id === selectedJob);
+  const activeJob = status.data?.jobs.find(job => job.id === selectedJob) ?? status.data?.jobs.find(job => job.status !== "completed" && job.status !== "cancelled");
+  const runningJob = status.data?.jobs.find(job => job.status === "running" || job.status === "queued");
   const detail = useQuery({ queryKey: ["hunter-detail", selectedJob, code], staleTime: 30000, enabled: !!selectedJob && /^[A-Z0-9]{5}$/.test(code),
     queryFn: async () => hunterDetailSchema.parse(await request(`/bottom/hunter/candidates/${code}?jobId=${selectedJob}`)) });
   const summaries = useQuery({ queryKey: ["hunter-evaluations"], enabled: showSummary, staleTime: 30000, queryFn: async () => hunterSummarySchema.parse(await request("/bottom/hunter/evaluations")) });
@@ -64,7 +65,14 @@ export function BottomHunter({ request }: { request: Request }) {
     return () => { window.removeEventListener("scroll", save); window.removeEventListener("pagehide", save); };
   }, [queryString, ranks.data]);
   const coverage = ranks.data?.coverage;
-  const asOf = params.get("asOf") || coverage?.asOf || "";
+  const asOf = params.get("asOf") || coverage?.asOf || status.data?.suggestedAsOf || "";
+  const acquisitionFrom = from || status.data?.suggestedFrom || "";
+  const preflightInput = hunterJobInputSchema.safeParse({ kind, asOf, ...(kind !== "scan" && acquisitionFrom ? { from: acquisitionFrom } : {}), ...(kind === "correction" && revision ? { revision } : {}) });
+  const preflightBody = preflightInput.success ? preflightInput.data : null;
+  const preflight = useQuery({ queryKey: ["hunter-preflight", preflightBody], enabled: !!preflightBody,
+    queryFn: async () => hunterPreflightSchema.parse(await request("/bottom/hunter/preflight", preflightBody)), staleTime: 10000, retry: false });
+  const preflightBlocked = !preflightBody || preflight.isPending || !!preflight.error || !!preflight.data?.errors.length;
+  const jobBlocked = busy ? "開始を受け付けています。" : runningJob ? "実行中の処理が終わるまでお待ちください。" : !asOf ? "分析する基準日を入力してください。" : !parsed.success ? "絞り込み条件を修正してください。" : kind !== "scan" && !acquisitionFrom ? "取得開始日を入力してください。" : kind === "correction" && !revision ? "訂正revisionを入力してください。" : kind !== "scan" && status.data?.mode !== "demo" && !external ? "J-Quantsへの実接続にチェックを入れてください。" : "";
   async function act(path: string, body: unknown) {
     setBusy(true); setMessage("");
     const startingJob = path === "/bottom/hunter/jobs";
@@ -87,12 +95,15 @@ export function BottomHunter({ request }: { request: Request }) {
   function actions(row: HunterRow) {
     const q = new URLSearchParams({ code: row.code, asOf: row.asOf });
     return <div className="hunter-actions">
-      <button onClick={() => update("code", row.code)}>底打ち詳細を見る</button>
+      <button className="hunter-detail-action" aria-label="底打ち詳細を見る" onClick={() => update("code", row.code)}>詳細を見る</button>
+      <details className="hunter-more"><summary>その他</summary>
+      <div className="hunter-more-items" onClick={event => { if ((event.target as HTMLElement).closest("a,button:not(:disabled)")) event.currentTarget.closest("details")?.removeAttribute("open"); }}>
       <Link to={`/research?${q}&jobId=${row.jobId}`}>かぶまるに研究してもらう</Link>
       <Link to={`/bottom?${q}`}>個別解析</Link>
       <Link to={`/similar?${q}&hunterJobId=${row.jobId}`}>デジャヴ相場を見る</Link>
       <button disabled={busy || !row.candidate} onClick={() => void act("/bottom/hunter/forecasts", { jobId: row.jobId, code: row.code, recordingMode })}>予測仮説を記録する</button>
       <button disabled={busy} onClick={() => void act("/watchlist", { code: row.code, hunterJobId: row.jobId })}>ウォッチリストに追加</button>
+      </div></details>
     </div>;
   }
   return <section className="hunter-page">
@@ -106,33 +117,64 @@ export function BottomHunter({ request }: { request: Request }) {
       <p>対象 {coverage?.universeCount ?? 0}銘柄 ／ 分析完了率 {coverage?.universeCount ? number(coverage.analyzedCount / coverage.universeCount, true) : "—"} ／ 候補発見 {coverage?.candidateCount ?? 0}件</p>
       {coverage && <><p>取得済み {coverage.acquiredCount} ／ 80営業日 {coverage.continuous80Count} ／ 判定可能 {coverage.analyzedCount} ／ 判定不能 {coverage.unavailableCount} ／ 取得失敗 {coverage.failedCount} ／ ユニバース除外 {coverage.excludedCount}</p><p>取得対象期間 {coverage.periodFrom ?? "旧記録：開始日未記録"} 〜 {coverage.periodTo ?? coverage.asOf} ／ {coverage.plan ?? status.data?.plan} ／ 契約遅延 {coverage.delayDays}日</p><p>取得締切 {coverage.cutoff}</p><strong>{coverage.complete ? "対象ユニバースの判定完了" : "未取得・未判定を含みます。全市場の完全走査ではありません。"}</strong><p role="note">かぶまる：{coverage.complete ? "今回の対象銘柄の判定は完了したよ。スコアは将来の成功確率ではないよ。" : `まだ全銘柄の判定が揃っていないよ。今回のランキングは保存済み結果だけが対象だよ！ 未処理 ${Math.max(0, coverage.universeCount-coverage.processedCount)}銘柄。欠損・除外理由も確認してね。`}</p><details><summary>除外・判定不能の理由</summary>{Object.entries(coverage.exclusionReasons).map(([reason,count]) => <p key={reason}>{reason}: {count}件</p>)}</details></>}
     </div>
-    <details className="card"><summary>取得・走査ジョブを明示的に開始</summary>
-      <p>走査は保存済みJSONのみを使います。初回取得・差分更新・訂正取得はJ-Quantsへ接続します。起動時の自動取得はありません。</p>
-      <p>基準日：{asOf || "未指定（下の「基準日」を入力してください）"}。取得可能な営業日を指定してください。</p>
+    <section className="card hunter-workflow" aria-label="取得とランキング更新">
+      <h2>ランキングを更新する</h2>
+      <ol className="hunter-steps"><li><strong>取得方法を選ぶ</strong><span>初めての日付は「初回取得」</span></li><li><strong>期間を確認して開始</strong><span>判定には連続80営業日分が必要</span></li><li><strong>ランキングに自動反映</strong><span>取得後、そのまま分析します</span></li></ol>
+      <details className="hunter-help"><summary>ホームの取得・保存済みデータとの違い</summary><p>ホームの「日足を取得」だけでは全市場ランキングは更新されません。「保存済みデータを走査」はハンター用の取得データを再分析します。</p></details>
+      <div className="hunter-job-fields">
+      <label>分析する基準日<input type="date" value={asOf} onChange={e => update("asOf", e.target.value)} /></label>
       {asOf && [0, 6].includes(new Date(`${asOf}T00:00:00Z`).getUTCDay()) && <p role="note">指定日は土日です。データを取得できる直前の営業日に変更してください。</p>}
       <label>ジョブ種別<select value={kind} onChange={e => setKind(e.target.value)}><option value="scan">保存済みデータを走査</option><option value="initial">初回取得</option><option value="update">差分更新</option><option value="correction">直近5営業日の訂正取得</option></select></label>
-      <label>取得開始日<input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label>
-      <label>訂正revision<input value={revision} onChange={e => setRevision(e.target.value)} placeholder="correction-20261017" /></label>
-      <label><input type="checkbox" checked={external} onChange={e => setExternal(e.target.checked)} />J-Quantsへの実接続を許可して開始する</label>
-      <button disabled={busy || !asOf || !parsed.success || (kind !== "scan" && status.data?.mode !== "demo" && !external)} onClick={() => void act("/bottom/hunter/jobs", { kind, asOf, ...(from ? { from } : {}), ...(revision ? { revision } : {}), confirmExternal: external })}>{busy ? "処理中…" : "ジョブを開始"}</button>
+      {kind !== "scan" && <label>取得開始日<input type="date" max={asOf} value={acquisitionFrom} onChange={e => setFrom(e.target.value)} /></label>}
+      {kind === "correction" && <label>訂正revision<input value={revision} onChange={e => setRevision(e.target.value)} placeholder="correction-20261017" /></label>}
+      </div>
+      {kind !== "scan" && status.data?.mode !== "demo" && <label className="hunter-consent"><input type="checkbox" checked={external} onChange={e => setExternal(e.target.checked)} />J-Quantsへの実接続を許可して開始する</label>}
+      {jobBlocked && <p role="note">{jobBlocked}</p>}
+      <div className="hunter-preflight" aria-label="取得前チェック" aria-live="polite">
+        <strong>取得前チェック</strong>
+        {!preflightBody && <p>日付・取得期間・訂正revisionを確認してください。</p>}
+        {preflightBody && preflight.isPending && <p>契約設定と保存済みデータを確認中…</p>}
+        {preflight.error && <p role="alert">事前チェックに接続できません。サーバーの起動状態を確認してください。</p>}
+        {preflight.data && <><p>{preflight.data.plan} ／ 契約上限 {preflight.data.limit}回/分 ／ アプリの取得速度 {preflight.data.rpm}回/分</p>
+          <p>取得可能期間：{preflight.data.windowFrom} 〜 {preflight.data.windowTo}</p>
+          <p>{kind === "scan" ? "保存済みデータの分析：外部APIは使用しません。" : `対象 ${preflight.data.sessions}営業日 ／ 取得済み ${preflight.data.cachedDays}日 ／ API最少 ${preflight.data.minimumRequests}回 ／ 通信待ち時間の目安 ${Math.ceil(preflight.data.minimumSeconds / 60)}分以上（分析時間は別）`}</p>
+          {preflight.data.waitSeconds > 0 && <p>API再開まで約{preflight.data.waitSeconds}秒待機します。</p>}
+          {preflight.data.errors.map(error => <p role="alert" className="error" key={error}>{error}</p>)}
+          {preflight.data.warnings.map(warning => <p className="muted" key={warning}>{warning}</p>)}
+          {!preflight.data.errors.length && <p>設定上は開始できます。実接続の成功を保証するチェックではありません。</p>}
+        </>}
+        <button className="hunter-reset" disabled={!preflightBody || preflight.isFetching} onClick={() => void preflight.refetch()}>再チェック</button>
+      </div>
+      <button disabled={!!jobBlocked || preflightBlocked} onClick={() => void act("/bottom/hunter/jobs", { kind, asOf, ...(kind !== "scan" && acquisitionFrom ? { from: acquisitionFrom } : {}), ...(revision ? { revision } : {}), confirmExternal: external })}>{busy ? "開始中…" : kind === "scan" ? "保存済みデータを分析して反映" : "データを取得してランキングに反映"}</button>
       {jobMessage && <p role={jobError ? "alert" : "status"} className={jobError ? "error" : undefined}>{jobMessage}</p>}
-      {activeJob && <div aria-live="polite"><p>状態：{({ queued: "開始待ち", running: "実行中", paused: "一時停止", cancelled: "中止", failed: "失敗", completed: "完了" })[activeJob.status]} ／ {activeJob.processed} / {activeJob.total}銘柄</p>{activeJob.error && <p role="alert" className="error">{activeJob.error}</p>}</div>}
-    </details>
-    <div className="hunter-filters card">
+      {activeJob && <div aria-live="polite"><p>状態：{({ queued: "開始待ち", running: "実行中", paused: "一時停止", cancelled: "中止", failed: "失敗", completed: "完了・ランキング反映済み" })[activeJob.status]} ／ 基準日 {activeJob.input.asOf}</p>
+        {activeJob.acquisition && <p>データ取得：{activeJob.acquisition.total ? `${activeJob.acquisition.completed} / ${activeJob.acquisition.total}営業日` : "営業日カレンダーを確認中"}{activeJob.acquisition.date && ` ／ ${activeJob.acquisition.date}`}</p>}
+        <p>銘柄分析：{activeJob.total ? `${activeJob.processed} / ${activeJob.total}銘柄` : "データの準備後に開始します"}</p>
+        {activeJob.status === "running" && <p>完了すると自動でランキングを更新します。このページを開いたままお待ちください。</p>}
+        {activeJob.error && <p role="alert" className="error">{activeJob.error}{activeJob.error.includes("マスター") && "。「初回取得」を選び、対象期間のデータを取得してください。"}</p>}
+        {["paused", "failed", "cancelled"].includes(activeJob.status) && <button disabled={busy || !!runningJob} onClick={() => void act("/bottom/hunter/jobs", { resumeJobId: activeJob.id })}>中断した処理を再開</button>}
+        {["running", "queued"].includes(activeJob.status) && <button disabled={busy} onClick={() => void act(`/bottom/hunter/jobs/${activeJob.id}/cancel`, {})}>処理を中止</button>}
+      </div>}
+    </section>
+    <section className="card hunter-filter-panel">
+      <div className="hunter-filter-heading"><div><h2>表示の絞り込み</h2><p>変更すると結果に即時反映されます。</p></div>
+      <button className="hunter-reset" onClick={() => setParams(current => { const next = new URLSearchParams(); for (const key of ["jobId", "asOf"]) { const value = current.get(key); if (value) next.set(key, value); } return next; })}>絞り込みを解除</button></div>
+      <div className="hunter-filters">
       <label>基準日<input type="date" value={params.get("asOf") ?? ""} onChange={e => update("asOf", e.target.value)} /></label>
       <label>市場区分<select value={params.get("market") ?? ""} onChange={e => update("market", e.target.value)}><option value="">すべて</option>{[["0111","プライム"],["0112","スタンダード"],["0113","グロース"],["0105","TOKYO PRO MARKET"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></label>
       <label>スコア下限<input type="number" min="0" max="100" value={params.get("minScore") ?? ""} onChange={e => update("minScore", e.target.value)} /></label>
       <label>RSI下限<input type="number" min="0" max="100" value={params.get("rsiMin") ?? ""} onChange={e => update("rsiMin", e.target.value)} /></label>
       <label>RSI上限<input type="number" min="0" max="100" value={params.get("rsiMax") ?? ""} onChange={e => update("rsiMax", e.target.value)} /></label>
-      <label>60日下落率以下（小数）<input type="number" min="-1" max="0" step="0.01" value={params.get("maxDrawdown") ?? ""} onChange={e => update("maxDrawdown", e.target.value)} /></label>
+      <label>60日下落率の上限<input aria-label="60日下落率以下（小数）" type="number" min="-1" max="0" step="0.01" placeholder="例：-0.2（-20%）" value={params.get("maxDrawdown") ?? ""} onChange={e => update("maxDrawdown", e.target.value)} /></label>
       <label>流動性<select value={params.get("liquidity") ?? ""} onChange={e => update("liquidity", e.target.value)}><option value="">すべて</option><option value="sufficient">1億円以上</option><option value="low">1億円未満</option><option value="unknown">未確認</option></select></label>
       <label>候補分類<select value={params.get("category") ?? ""} onChange={e => update("category", e.target.value)}><option value="">すべて</option>{hunterCategory.options.map(c => <option key={c}>{c}</option>)}</select></label>
       <label>リスク<select value={params.get("risk") ?? ""} onChange={e => update("risk", e.target.value)}><option value="">すべて</option><option value="yes">あり</option><option value="no">なし</option></select></label>
-    </div>
+      </div>
+    </section>
     <label>予測記録の区分<select value={recordingMode} onChange={e => setRecordingMode(e.target.value)}><option value="research">過去研究（後から作成した仮説）</option><option value="live">実運用（当日作成のみ）</option></select></label>
     <h2>ランキング（{ranks.data?.total ?? 0}件）</h2>
     {ranks.isLoading && <p role="status">ランキングを読み込み中…</p>}
-    {!ranks.isLoading && !ranks.error && !ranks.data?.rows.length && <p>この条件の走査済み結果はありません。基準日を指定してジョブを開始してください。</p>}
+    {!ranks.isLoading && !ranks.error && !ranks.data?.rows.length && <p>{runningJob ? "取得・分析中です。上の進捗をご確認ください。" : coverage?.processedCount ? "絞り込み条件に一致する銘柄がありません。「絞り込みを解除」で結果を確認できます。" : "まだ分析結果がありません。上の「ランキングを更新する」で初回取得、または保存済みデータの分析を開始してください。"}</p>}
     {!mobile && <div className="hunter-desktop"><table><thead><tr><th>順位・銘柄・市場</th><th>点数・分類</th><th>RSI・下落率・出来高倍率</th><th>平均売買代金</th><th>根拠・リスク・取得状態</th><th>操作</th></tr></thead><tbody>{ranks.data?.rows.map(r => <tr key={r.code}><td>{r.rank} · {displayStockCode(r.code)} {r.name}<br />{r.marketName} · {r.asOf}</td><td>{r.score ?? "—"}点<br />{r.category}{r.candidate ? " · 候補" : ""}</td><td>{number(r.rsi)} ／ {number(r.drawdown,true)} ／ {number(r.volumeRatio)}</td><td>{number(r.averageTurnover20)}円</td><td>{r.reasons.slice(0,3).join("、")}<br />{r.risks.join("、") || "追加リスクなし"}<br />{r.acquisitionStatus} · {r.continuousSessions}営業日</td><td>{actions(r)}</td></tr>)}</tbody></table></div>}
     {mobile && <div className="hunter-mobile">{ranks.data?.rows.map(r => <article className="card" key={r.code}><h3>{r.rank} · {displayStockCode(r.code)} {r.name}</h3><p>{r.marketName} · {r.asOf} ／ {r.score ?? "—"}点 · {r.category}</p><p>RSI {number(r.rsi)} ／ 下落 {number(r.drawdown,true)} ／ 出来高 {number(r.volumeRatio)}倍 ／ 売買代金 {number(r.averageTurnover20)}円</p><p>{r.reasons.slice(0,3).join("、")}</p><p>{r.risks.join("、")} · {r.acquisitionStatus} · {r.continuousSessions}営業日</p>{actions(r)}</article>)}</div>}
     <div className="toolbar"><button disabled={!parsed.success || (parsed.data.page ?? 1) <= 1} onClick={() => update("page", String((parsed.success ? parsed.data.page : 1)-1))}>前のページ</button><span>{parsed.success ? parsed.data.page : "—"}ページ</span><button disabled={!ranks.data || ranks.data.page*ranks.data.pageSize >= ranks.data.total} onClick={() => update("page", String((parsed.success ? parsed.data.page : 1)+1))}>次のページ</button></div>

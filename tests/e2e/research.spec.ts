@@ -6,6 +6,7 @@ test("ハンターから研究し、根拠付きの質問・ローカル保存�
   const job = await launched.json();
   await expect.poll(async () => (await (await page.request.get(`/api/bottom/hunter/jobs/${job.id}`)).json()).status).toBe("completed");
   await page.goto(`/bottom/hunter?asOf=2026-10-09&jobId=${job.id}`);
+  await page.locator(".hunter-desktop tbody tr").filter({ hasText: "架空モビリティ" }).getByText("その他", { exact: true }).click();
   await page.locator(".hunter-desktop tbody tr").filter({ hasText: "架空モビリティ" }).getByRole("link", { name: "かぶまるに研究してもらう" }).click();
   await expect(page).toHaveURL(/\/research\?.*code=72030/);
   await expect(page.getByRole("heading", { name: "かぶまるAI研究員", exact: true })).toBeVisible();

@@ -1,4 +1,5 @@
 import { readHunterDetail } from "./hunter-consistency";
+import { hunterPreflight } from "./hunter-preflight";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Service } from "./service";
@@ -7,6 +8,8 @@ import { searchDejavuContext } from "./hunter-research";
 import { recordHunterForecast, hunterEvaluationSummary } from "./hunter-journal";
 import { HUNTER_FORECAST_METHOD } from "../../../packages/core/hunter-method";
 import { compareHunterRows, explainBottom } from "../../../packages/core/hunter";
+import { dataWindow } from "../../../packages/integrations/jquants-plan";
+import type { Calendar } from "../../../packages/core/index";
 import { hunterCode, hunterFilterSchema, hunterRankingsSchema, hunterStatusSchema, hunterDetailSchema, hunterJobSchema, hunterRowSchema, type HunterCoverage, type HunterRow } from "../../../packages/core/hunter-schema";
 
 export const HUNTER_BASE = "market/hunter";
@@ -65,10 +68,17 @@ export function registerHunter(app: FastifyInstance, service: Service) {
   app.get("/api/bottom/hunter/status", async () => {
     const latestId = await hunterJobFor(service, {});
     const coverage = latestId ? await service.store.read(`${HUNTER_BASE}/coverage/${latestId}.json`, null) : null;
+    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
+    const end = service.mode === "demo" ? today : dataWindow(process.env.JQUANTS_PLAN || "Free", today).to;
+    const calendar = await service.store.read<Calendar>("market/calendar.json", []);
+    const dates = calendar.filter(d => d.open && d.date <= end).map(d => d.date).sort();
+    const suggestedAsOf = dates.at(-1);
+    const suggestedFrom = dates.slice(-100)[0];
     return hunterStatusSchema.parse({ mode: service.mode === "demo" ? "demo" : "research", plan: service.mode === "demo" ? "fixture" : process.env.JQUANTS_PLAN || "Free",
-      delayDays: service.mode !== "demo" && (process.env.JQUANTS_PLAN || "Free") === "Free" ? 84 : 0, jobs: await engine.list(), coverage });
+      delayDays: service.mode !== "demo" && (process.env.JQUANTS_PLAN || "Free") === "Free" ? 84 : 0, jobs: await engine.list(), coverage, suggestedAsOf, suggestedFrom });
   });
   app.get("/api/bottom/hunter/rankings", async req => hunterRankings(service, req.query));
+  app.post("/api/bottom/hunter/preflight", async req => hunterPreflight(service, req.body));
   app.get("/api/bottom/hunter/candidates/:code", async (req, reply) => {
     const { code } = z.object({ code: hunterCode }).parse(req.params);
     const q = z.object({ jobId: z.string().uuid().optional(), asOf: z.string().date().optional() }).strict().parse(req.query);
@@ -80,6 +90,8 @@ export function registerHunter(app: FastifyInstance, service: Service) {
   app.get("/api/bottom/hunter/jobs/:id", async req => engine.get(z.object({ id: z.string().uuid() }).parse(req.params).id));
   app.post("/api/bottom/hunter/jobs", async (req, reply) => {
     const resume = z.object({ resumeJobId: z.string().uuid() }).strict().safeParse(req.body);
+    const check = await hunterPreflight(service, resume.success ? (await engine.get(resume.data.resumeJobId)).input : req.body);
+    if (check.errors.length) return reply.code(400).send({ error: check.errors.join(" ") });
     const job = resume.success ? await engine.resume(resume.data.resumeJobId) : await engine.create(req.body);
     if (job.status !== "completed") launch(job.id);
     return reply.code(202).send(job);
