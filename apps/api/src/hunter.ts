@@ -32,13 +32,15 @@ export async function hunterRankings(service: Service, raw: unknown) {
   const coverage = id ? await service.store.read<HunterCoverage | null>(`${HUNTER_BASE}/coverage/${id}.json`, null) : null;
   const saved = id ? await service.store.read<HunterRow[] | null>(`${HUNTER_BASE}/rankings/${id}/index.json`, null) : null;
   const rows = saved ?? (id ? (await new HunterJobs(service).rows(id)).sort(compareHunterRows).map((r,i) => ({ ...r, rank: i+1 })) : []);
-  const selected = rows.filter(r => (!q.asOf || r.asOf === q.asOf) && (!q.market || r.market === q.market) &&
+  let rank = 0;
+  const normalized = [...rows].sort(compareHunterRows).map(r => ({ ...r, rank: r.score !== null && r.category !== "判定不能" ? ++rank : null }));
+  const selected = normalized.filter(r => (q.view === "all" || (q.view === "ranked" ? r.rank !== null : r.rank === null)) && (!q.asOf || r.asOf === q.asOf) && (!q.market || r.market === q.market) &&
     (q.minScore === undefined || (r.score !== null && r.score >= q.minScore)) &&
     (q.rsiMin === undefined || (r.rsi !== null && r.rsi >= q.rsiMin)) && (q.rsiMax === undefined || (r.rsi !== null && r.rsi <= q.rsiMax)) &&
     (q.maxDrawdown === undefined || (r.drawdown !== null && r.drawdown <= q.maxDrawdown)) &&
     (!q.liquidity || r.liquidity === q.liquidity) && (!q.category || r.category === q.category) &&
     (!q.risk || (q.risk === "yes" ? r.risks.length > 0 : r.risks.length === 0)));
-  return hunterRankingsSchema.parse({ coverage, total: selected.length, page: q.page, pageSize: q.pageSize,
+  return hunterRankingsSchema.parse({ coverage, rankedCount: rank, unavailableCount: normalized.length - rank, total: selected.length, page: q.page, pageSize: q.pageSize,
     rows: selected.slice((q.page - 1) * q.pageSize, q.page * q.pageSize) });
 }
 export async function hunterCandidate(service: Service, code: string, id: string, includeResearch = false) {
@@ -79,6 +81,23 @@ export function registerHunter(app: FastifyInstance, service: Service) {
   });
   app.get("/api/bottom/hunter/rankings", async req => hunterRankings(service, req.query));
   app.post("/api/bottom/hunter/preflight", async req => hunterPreflight(service, req.body));
+  app.get("/api/bottom/hunter/period", async req => {
+    const { asOf } = z.object({ asOf: z.string().date() }).strict().parse(req.query);
+    const cal = await service.store.read<Calendar>("market/calendar.json", []);
+    const days = [...new Set(cal.filter(d => d.open && d.date <= asOf).map(d => d.date))].sort().slice(-80);
+    if (!cal.some(d => d.open && d.date === asOf)) return { from: null, reason: "営業日の基準日を指定してください。カレンダー未取得の場合は先に日足を取得してください。" };
+    if (days.length < 80) return { from: null, reason: "保存済みカレンダーに80営業日分がありません。先にホームで日足を取得してください。" };
+    const known = new Set(cal.map(d => d.date));
+    for (const date = new Date(`${days[0]}T00:00:00Z`); date.toISOString().slice(0, 10) <= asOf; date.setUTCDate(date.getUTCDate() + 1)) {
+      if (!known.has(date.toISOString().slice(0, 10))) return { from: null, reason: "期間内の営業日カレンダーに欠損があります。先にホームで日足を取得してください。" };
+    }
+    if (service.mode !== "demo") {
+      const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
+      const range = dataWindow(process.env.JQUANTS_PLAN || "Free", today);
+      if (days[0] < range.from || asOf > range.to) return { from: null, reason: "80営業日分の期間が契約の取得可能範囲を超えています。基準日を変更してください。" };
+    }
+    return { from: days[0], reason: null };
+  });
   app.get("/api/bottom/hunter/candidates/:code", async (req, reply) => {
     const { code } = z.object({ code: hunterCode }).parse(req.params);
     const q = z.object({ jobId: z.string().uuid().optional(), asOf: z.string().date().optional() }).strict().parse(req.query);

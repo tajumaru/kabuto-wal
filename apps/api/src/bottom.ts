@@ -31,10 +31,19 @@ export async function analyzeBottom(
       .sort()
       .at(-1) ??
     null;
-  const selectedDerived =
+  let selectedDerived =
     derived?.bars.at(-1)?.sessionDate === asOf ? derived : null;
+  let savedSnapshot: Awaited<ReturnType<typeof snapshot>> | undefined;
+  // A short all-market acquisition must not hide an already complete single-stock
+  // history. Keep explicitly supplied hunter inputs frozen, and never mix series.
+  if (options.series === undefined && selectedDerived && selectedDerived.bars.length < 80) {
+    savedSnapshot = (await snapshot(service, code, cutoff)).filter(b => !asOf || b.sessionDate <= asOf);
+    const tail = savedSnapshot.slice(-80);
+    if (tail.length === 80 && tail.at(-1)?.sessionDate === asOf && tail[0].seriesId &&
+      tail.every(b => b.seriesId === tail[0].seriesId && b.providerCode === code)) selectedDerived = null;
+  }
   const rows = asOf
-    ? (selectedDerived?.bars ?? (await snapshot(service, code, cutoff))).filter(
+    ? (selectedDerived?.bars ?? savedSnapshot ?? (await snapshot(service, code, cutoff))).filter(
         (b) => b.sessionDate <= asOf,
       )
     : [];

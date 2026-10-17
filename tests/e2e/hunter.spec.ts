@@ -5,10 +5,18 @@ test("保存済み市場を走査し、URLフィルター・詳細・モバイ�
   await expect(page.getByRole("heading", { name: "底打ちハンター", exact: true })).toBeVisible();
   console.log(`hunter initial heading ms=${(performance.now()-started).toFixed(1)}`);
   await expect(page.getByRole("heading", { name: "ランキングを更新する" })).toBeVisible();
+  await page.getByLabel("ジョブ種別").selectOption("initial");
+  await page.getByRole("button", { name: "80営業日分に設定", exact: true }).click();
+  await expect(page.getByLabel("取得開始日", { exact: true })).not.toHaveValue("");
+  await expect(page.getByLabel("取得前チェック")).toContainText("対象 80営業日");
+  await page.getByLabel("ジョブ種別").selectOption("scan");
   await page.locator(".hunter-workflow").screenshot({ path: "test-results/hunter-workflow-desktop.png" });
   await page.locator(".hunter-filter-panel").screenshot({ path: "test-results/hunter-filters-desktop.png" });
   await page.getByRole("button", { name: "保存済みデータを分析して反映", exact: true }).click();
   await expect(page.locator(".hunter-desktop tbody tr")).toHaveCount(4, { timeout: 120000 });
+  await expect(page.locator(".hunter-desktop tbody")).not.toContainText("insufficient_history");
+  await expect(page.locator(".hunter-desktop tbody")).toContainText("取得済み");
+  await page.locator(".hunter-desktop").screenshot({ path: "test-results/hunter-rankings-desktop.png" });
   await expect(page.getByLabel("カバレッジ")).toContainText("対象 4銘柄");
   await expect(page.getByRole("heading", { name: "データ品質" })).toBeVisible();
   await expect(page.getByLabel("カバレッジ")).toContainText("取得対象期間");

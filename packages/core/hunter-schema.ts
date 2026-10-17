@@ -60,6 +60,7 @@ export const hunterJobSchema = z.object({
   failureStage: z.enum(["acquisition","analysis"]).optional(), retryAt: z.string().datetime().optional(),
 });
 export const hunterFilterSchema = z.object({
+  view: z.enum(["ranked", "unavailable", "all"]).default("ranked"),
   jobId: z.string().uuid().optional(), asOf: z.string().date().optional(),
   market: z.string().max(20).optional(), minScore: z.coerce.number().min(0).max(100).optional(),
   rsiMin: z.coerce.number().min(0).max(100).optional(), rsiMax: z.coerce.number().min(0).max(100).optional(),
@@ -68,6 +69,7 @@ export const hunterFilterSchema = z.object({
   page: z.coerce.number().int().min(1).max(100000).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25),
 }).strict();
 export const hunterRankingsSchema = z.object({
+  rankedCount: z.number().default(0), unavailableCount: z.number().default(0),
   coverage: hunterCoverageSchema.nullable(), rows: z.array(hunterRowSchema), total: z.number(), page: z.number(), pageSize: z.number(),
 });
 export const hunterDetailSchema = z.object({ row: hunterRowSchema, analysis: bottomAnalysisSchema, explanation: z.string(), dejavu: dejavuResultSchema.nullable(), dejavuWarning: z.string().optional() });
@@ -85,6 +87,7 @@ export const hunterPreflightSchema = z.object({
   sessions: z.number(), cachedDays: z.number(), minimumRequests: z.number(), minimumSeconds: z.number(),
   waitSeconds: z.number(), errors: z.array(z.string()), warnings: z.array(z.string()),
 });
+export const hunterPeriodSchema = z.object({ from: z.string().nullable(), reason: z.string().nullable() });
 export const hunterForecastResponseSchema = z.object({ records: z.array(predictionSchema), note: z.string() });
 export const hunterSummarySchema = z.object({ groups: z.array(z.object({
   key: z.string(), total: z.number(), pending: z.number(), available: z.number(), evaluated: z.number(),

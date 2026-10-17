@@ -51,6 +51,17 @@ it("新しい原本系列だけで個別解析し、売買代金と過去cutoff�
     expect(result.adjustmentVersion).toBe("raw-factor-asof-v1");
     expect(result.riskCodes).not.toContain("liquidity_unknown");
     expect(await service.history("72030")).toEqual([]);
+    // A subsequent short market-wide series must not mask a complete stock history.
+    await service.saveBars(bars);
+    const short = adjustedSeries(observations.slice(-11), "72030", "2026-10-09", "2026-10-10T00:00:00.000Z", calendar());
+    await service.store.write(`market/bottom-series/72030/2026-10-09/${series.seriesId}.json`, { ...short, contentHash: hash(short) });
+    const recovered = await analyzeBottom(service, "72030", "2026-10-09");
+    expect(recovered.status).toBe("ready");
+    expect(recovered.chart).toHaveLength(80);
+    const frozen = await analyzeBottom(service, "72030", "2026-10-09", new Date(), { series: short });
+    expect(frozen.status).toBe("unavailable");
+    expect(frozen.reasonCodes).toContain("insufficient_history");
+    await service.store.write(`market/bottom-series/72030/2026-10-09/${series.seriesId}.json`, { ...series, contentHash: hash(series) });
     const corrupted = {
       ...series,
       bars: series.bars.map((b) => ({ ...b, adjClose: 1 })),

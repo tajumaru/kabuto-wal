@@ -38,7 +38,6 @@ const DejavuResearch = lazy(() => import("./DejavuResearch").then(m => ({ defaul
 const BottomResearch = lazy(() => import("./BottomResearch").then(m => ({ default: m.BottomResearch })));
 const KabumaruResearch = lazy(() => import("./KabumaruResearch").then(m => ({ default: m.KabumaruResearch })));
 const BottomHunter = lazy(() => import("./BottomHunter").then(m => ({ default: m.BottomHunter })));
-import { HomeBrand } from "./HomeBrand";
 import { DailyFetch } from "./DailyFetch";
 import { MemoryContent, memoryKindLabel, memorySyncLabel } from "./MemoryContent";
 import { MemoryReset } from "./MemoryReset";
@@ -312,7 +311,6 @@ function Home() {
   const [code, setCode] = useState("");
   return (
     <>
-      <HomeBrand />
       <Title
         eyebrow="MARKET OVERVIEW"
         title="今日の相場、これまでの記憶。"

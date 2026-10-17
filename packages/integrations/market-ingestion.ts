@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Store } from "../storage/index";
 import { JQuants } from "./jquants";
+import { RequestDeferred } from "./jquants-limiter";
 import { dataWindow } from "./jquants-plan";
 import {
   ADJUSTMENT_VERSION,
@@ -23,7 +24,7 @@ export type Checkpoint = {
   seen: string[];
   next?: string;
   masterHash?: string;
-  lease?: { token: string; expiresAt: number };
+  lease?: { token: string; expiresAt: number; pid?: number };
   error?: string;
 };
 export class MarketIngestion {
@@ -79,11 +80,22 @@ export class MarketIngestion {
           });
         return old;
       }
-      if (old.lease && old.lease.expiresAt > this.now().getTime())
-        throw Error("この取得は別の処理で実行中です");
+      if (old.lease && old.lease.expiresAt > this.now().getTime()) {
+        let alive = true;
+        if (old.lease.pid) {
+          try { process.kill(old.lease.pid, 0); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") alive = false; }
+        }
+        if (alive) {
+          const deferred = new RequestDeferred(new Date(old.lease.expiresAt).toISOString());
+          const until = new Date(old.lease.expiresAt).toLocaleTimeString("ja-JP", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          deferred.message = `同じ日付（${date}）の取得ロックが残っています。日本時間${until}以降に「中断した処理を再開」を押してください。取得済みデータは保持しています。`;
+          throw deferred;
+        }
+      }
       const next = {
         ...old,
-        lease: { token, expiresAt: this.now().getTime() + 900000 },
+        lease: { token, expiresAt: this.now().getTime() + 900000, pid: process.pid },
       };
       await this.store.write(key, next);
       return next;
@@ -163,7 +175,7 @@ export class MarketIngestion {
           next: page.next,
           status: page.next ? "partial" : "completed",
           lease: page.next
-            ? { token, expiresAt: this.now().getTime() + 900000 }
+            ? { token, expiresAt: this.now().getTime() + 900000, pid: process.pid }
             : undefined,
         };
         if (!page.next) {

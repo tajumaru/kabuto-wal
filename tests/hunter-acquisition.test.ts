@@ -5,7 +5,9 @@ import path from "node:path";
 import { Service } from "../apps/api/src/service";
 import { JQuants } from "../packages/integrations/jquants";
 import { HunterJobs } from "../apps/api/src/hunter-jobs";
+import { MarketIngestion } from "../packages/integrations/market-ingestion";
 import { RequestDeferred } from "../packages/integrations/jquants-limiter";
+
 
 it("取得失敗のcheckpointを保持して再開し、別ジョブの同時取得を抑止", async () => {
   vi.stubEnv("JQUANTS_PLAN", "Light");
@@ -25,6 +27,14 @@ it("取得失敗のcheckpointを保持して再開し、別ジョブの同時取
     expect((await engine.get(job.id)).status).toBe("completed");
     expect((await engine.get(job.id)).acquisition).toEqual({ completed: 1, total: 1, date });
     expect(page).toHaveBeenCalledTimes(2);
+    const checkpointKey = `market/ingestion/${date}/recovery/checkpoint.json`;
+    const ingestion = new MarketIngestion(service.store, provider, "Light", () => new Date("2026-10-17T01:00:00Z"));
+    const expiresAt = Date.parse("2026-10-17T01:15:00Z");
+    await service.store.write(checkpointKey, { date, revision: "recovery", status: "partial", pages: [], seen: [], lease: { token: "active", pid: process.pid, expiresAt } });
+    await expect(ingestion.ingestDate(date, "recovery")).rejects.toBeInstanceOf(RequestDeferred);
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => { throw Object.assign(Error("gone"), { code: "ESRCH" }); });
+    try { expect((await ingestion.ingestDate(date, "recovery")).status).toBe("completed"); }
+    finally { kill.mockRestore(); }
     const deferred=await engine.create({kind:"update",asOf:date,from:date,confirmExternal:true});
     vi.spyOn(provider,"calendar").mockRejectedValueOnce(new RequestDeferred("2026-10-18T00:00:00.000Z"));
     await expect(engine.run(deferred.id)).rejects.toBeInstanceOf(RequestDeferred);

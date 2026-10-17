@@ -1,15 +1,16 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { hunterJobInputSchema, hunterPreflightSchema, hunterForecastResponseSchema, hunterSummarySchema, hunterCategory, hunterDetailSchema, hunterFilterSchema, hunterJobSchema, hunterRankingsSchema, hunterStatusSchema, type HunterRow } from "../../../packages/core/hunter-schema";
+import { hunterPeriodSchema, hunterJobInputSchema, hunterPreflightSchema, hunterForecastResponseSchema, hunterSummarySchema, hunterCategory, hunterDetailSchema, hunterFilterSchema, hunterJobSchema, hunterRankingsSchema, hunterStatusSchema, type HunterRow } from "../../../packages/core/hunter-schema";
 import { KabumaruPortrait } from "./Kabumaru";
 import { displayStockCode } from "./stock-search";
+import { hunterLabel, acquisitionLabel } from "./hunter-labels";
 const HunterPriceChart = lazy(() => import("./HunterPriceChart").then(m => ({ default: m.HunterPriceChart })));
 const DejavuResearch = lazy(() => import("./DejavuResearch").then(m => ({ default: m.DejavuResearch })));
 
 type Request = (url: string, body?: unknown) => Promise<unknown>;
 const number = (n: number | null | undefined, percent = false) => n == null ? "—" : `${(n * (percent ? 100 : 1)).toLocaleString("ja-JP", { maximumFractionDigits: 2 })}${percent ? "%" : ""}`;
-const filterKeys = ["jobId", "asOf", "market", "minScore", "rsiMin", "rsiMax", "maxDrawdown", "liquidity", "category", "risk", "page", "pageSize"];
+const filterKeys = ["view", "jobId", "asOf", "market", "minScore", "rsiMin", "rsiMax", "maxDrawdown", "liquidity", "category", "risk", "page", "pageSize"];
 export function BottomHunter({ request }: { request: Request }) {
   const [params, setParams] = useSearchParams(), client = useQueryClient();
   const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 700px)").matches);
@@ -31,6 +32,7 @@ export function BottomHunter({ request }: { request: Request }) {
   const query = new URLSearchParams(parsed.success ? Object.fromEntries(Object.entries(parsed.data).filter(([,v]) => v !== undefined).map(([k,v]) => [k,String(v)])) : {});
   const queryString = query.toString();
   const code = params.get("code") ?? "";
+  const unavailableView = params.get("view") === "unavailable";
   function update(key: string, value: string) {
     setParams(current => { const next = new URLSearchParams(current); if (value) next.set(key, value); else next.delete(key); if (key !== "page" && key !== "code") next.delete("page"); if (key === "asOf") { next.delete("jobId"); next.delete("code"); } return next; });
   }
@@ -67,6 +69,8 @@ export function BottomHunter({ request }: { request: Request }) {
   const coverage = ranks.data?.coverage;
   const asOf = params.get("asOf") || coverage?.asOf || status.data?.suggestedAsOf || "";
   const acquisitionFrom = from || status.data?.suggestedFrom || "";
+  const period = useQuery({ queryKey: ["hunter-period", asOf], enabled: !!asOf && kind !== "scan", staleTime: 30000, retry: false,
+    queryFn: async () => hunterPeriodSchema.parse(await request(`/bottom/hunter/period?asOf=${asOf}`)) });
   const preflightInput = hunterJobInputSchema.safeParse({ kind, asOf, ...(kind !== "scan" && acquisitionFrom ? { from: acquisitionFrom } : {}), ...(kind === "correction" && revision ? { revision } : {}) });
   const preflightBody = preflightInput.success ? preflightInput.data : null;
   const preflight = useQuery({ queryKey: ["hunter-preflight", preflightBody], enabled: !!preflightBody,
@@ -115,7 +119,7 @@ export function BottomHunter({ request }: { request: Request }) {
     <div className="hunter-coverage card" aria-label="カバレッジ">
       <h2>データ品質</h2><p>基準日 {coverage?.asOf ?? "未走査"} ／ 最終データ更新 {coverage?.lastObservedAt ?? "未取得"}</p>
       <p>対象 {coverage?.universeCount ?? 0}銘柄 ／ 分析完了率 {coverage?.universeCount ? number(coverage.analyzedCount / coverage.universeCount, true) : "—"} ／ 候補発見 {coverage?.candidateCount ?? 0}件</p>
-      {coverage && <><p>取得済み {coverage.acquiredCount} ／ 80営業日 {coverage.continuous80Count} ／ 判定可能 {coverage.analyzedCount} ／ 判定不能 {coverage.unavailableCount} ／ 取得失敗 {coverage.failedCount} ／ ユニバース除外 {coverage.excludedCount}</p><p>取得対象期間 {coverage.periodFrom ?? "旧記録：開始日未記録"} 〜 {coverage.periodTo ?? coverage.asOf} ／ {coverage.plan ?? status.data?.plan} ／ 契約遅延 {coverage.delayDays}日</p><p>取得締切 {coverage.cutoff}</p><strong>{coverage.complete ? "対象ユニバースの判定完了" : "未取得・未判定を含みます。全市場の完全走査ではありません。"}</strong><p role="note">かぶまる：{coverage.complete ? "今回の対象銘柄の判定は完了したよ。スコアは将来の成功確率ではないよ。" : `まだ全銘柄の判定が揃っていないよ。今回のランキングは保存済み結果だけが対象だよ！ 未処理 ${Math.max(0, coverage.universeCount-coverage.processedCount)}銘柄。欠損・除外理由も確認してね。`}</p><details><summary>除外・判定不能の理由</summary>{Object.entries(coverage.exclusionReasons).map(([reason,count]) => <p key={reason}>{reason}: {count}件</p>)}</details></>}
+      {coverage && <><p>取得済み {coverage.acquiredCount} ／ 80営業日 {coverage.continuous80Count} ／ 判定可能 {coverage.analyzedCount} ／ 判定不能 {coverage.unavailableCount} ／ 取得失敗 {coverage.failedCount} ／ ユニバース除外 {coverage.excludedCount}</p><p>取得対象期間 {coverage.periodFrom ?? "旧記録：開始日未記録"} 〜 {coverage.periodTo ?? coverage.asOf} ／ {coverage.plan ?? status.data?.plan} ／ 契約遅延 {coverage.delayDays}日</p><p>取得締切 {coverage.cutoff}</p><strong>{coverage.complete ? "対象ユニバースの判定完了" : "未取得・未判定を含みます。全市場の完全走査ではありません。"}</strong><p role="note">かぶまる：{coverage.complete ? "今回の対象銘柄の判定は完了したよ。スコアは将来の成功確率ではないよ。" : `まだ全銘柄の判定が揃っていないよ。今回のランキングは保存済み結果だけが対象だよ！ 未処理 ${Math.max(0, coverage.universeCount-coverage.processedCount)}銘柄。欠損・除外理由も確認してね。`}</p><details><summary>除外・判定不能の理由</summary>{Object.entries(coverage.exclusionReasons).map(([reason,count]) => <p key={reason}>{hunterLabel(reason)}: {count}件</p>)}</details></>}
     </div>
     <section className="card hunter-workflow" aria-label="取得とランキング更新">
       <h2>ランキングを更新する</h2>
@@ -125,7 +129,10 @@ export function BottomHunter({ request }: { request: Request }) {
       <label>分析する基準日<input type="date" value={asOf} onChange={e => update("asOf", e.target.value)} /></label>
       {asOf && [0, 6].includes(new Date(`${asOf}T00:00:00Z`).getUTCDay()) && <p role="note">指定日は土日です。データを取得できる直前の営業日に変更してください。</p>}
       <label>ジョブ種別<select value={kind} onChange={e => setKind(e.target.value)}><option value="scan">保存済みデータを走査</option><option value="initial">初回取得</option><option value="update">差分更新</option><option value="correction">直近5営業日の訂正取得</option></select></label>
-      {kind !== "scan" && <label>取得開始日<input type="date" max={asOf} value={acquisitionFrom} onChange={e => setFrom(e.target.value)} /></label>}
+      {kind !== "scan" && <div className="hunter-period-field"><label>取得開始日<input type="date" max={asOf} value={acquisitionFrom} onChange={e => setFrom(e.target.value)} /></label>
+        <button className="hunter-period-button" disabled={!period.data?.from || period.isFetching} onClick={() => { if (period.data?.from) { setFrom(period.data.from); setJobMessage(`基準日を含む80営業日分の開始日（${period.data.from}）を設定しました。`); setJobError(false); } }}>80営業日分に設定</button>
+        <small>{period.isFetching ? "営業日を確認中…" : period.error ? "営業日を確認できません。再読み込みしてください。" : period.data?.reason ?? "基準日を含む80営業日。日付の設定のみ行います。"}</small>
+      </div>}
       {kind === "correction" && <label>訂正revision<input value={revision} onChange={e => setRevision(e.target.value)} placeholder="correction-20261017" /></label>}
       </div>
       {kind !== "scan" && status.data?.mode !== "demo" && <label className="hunter-consent"><input type="checkbox" checked={external} onChange={e => setExternal(e.target.checked)} />J-Quantsへの実接続を許可して開始する</label>}
@@ -158,7 +165,7 @@ export function BottomHunter({ request }: { request: Request }) {
     </section>
     <section className="card hunter-filter-panel">
       <div className="hunter-filter-heading"><div><h2>表示の絞り込み</h2><p>変更すると結果に即時反映されます。</p></div>
-      <button className="hunter-reset" onClick={() => setParams(current => { const next = new URLSearchParams(); for (const key of ["jobId", "asOf"]) { const value = current.get(key); if (value) next.set(key, value); } return next; })}>絞り込みを解除</button></div>
+      <button className="hunter-reset" onClick={() => setParams(current => { const next = new URLSearchParams(); for (const key of ["jobId", "asOf", "view"]) { const value = current.get(key); if (value) next.set(key, value); } return next; })}>絞り込みを解除</button></div>
       <div className="hunter-filters">
       <label>基準日<input type="date" value={params.get("asOf") ?? ""} onChange={e => update("asOf", e.target.value)} /></label>
       <label>市場区分<select value={params.get("market") ?? ""} onChange={e => update("market", e.target.value)}><option value="">すべて</option>{[["0111","プライム"],["0112","スタンダード"],["0113","グロース"],["0105","TOKYO PRO MARKET"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></label>
@@ -172,15 +179,21 @@ export function BottomHunter({ request }: { request: Request }) {
       </div>
     </section>
     <label>予測記録の区分<select value={recordingMode} onChange={e => setRecordingMode(e.target.value)}><option value="research">過去研究（後から作成した仮説）</option><option value="live">実運用（当日作成のみ）</option></select></label>
-    <h2>ランキング（{ranks.data?.total ?? 0}件）</h2>
+    <div className="hunter-result-tabs" role="group" aria-label="分析結果の表示">
+      <button aria-pressed={!unavailableView} onClick={() => { update("view", "ranked"); }}>ランキング（{ranks.data?.rankedCount ?? 0}銘柄）</button>
+      <button aria-pressed={unavailableView} onClick={() => { update("view", "unavailable"); }}>判定不能（{ranks.data?.unavailableCount ?? 0}銘柄）</button>
+    </div>
+    <h2>{unavailableView ? "判定不能の銘柄" : "採点済みランキング"}（{ranks.data?.total ?? 0}件）</h2>
+    <p className="muted">{unavailableView ? "データ不足・不備のため採点できなかった銘柄です。順位は付けていません。" : "採点できた銘柄だけを掲載しています。判定不能の銘柄はランキングに含めません。"}</p>
+    {!unavailableView && coverage && ranks.data?.rankedCount === 0 && <div className="callout"><strong>採点できた銘柄がないため、ランキングはまだ作成できません。</strong><p>ハンターの初回取得で、基準日まで連続80営業日を含む期間を取得してください。対象はウォッチリスト外も含む全市場です。ウォッチリストへの追加は不要です。</p><p>ホームで取得した個別銘柄の日足とは別のデータを使います。取得済みの日付は再利用します。</p></div>}
     {ranks.isLoading && <p role="status">ランキングを読み込み中…</p>}
-    {!ranks.isLoading && !ranks.error && !ranks.data?.rows.length && <p>{runningJob ? "取得・分析中です。上の進捗をご確認ください。" : coverage?.processedCount ? "絞り込み条件に一致する銘柄がありません。「絞り込みを解除」で結果を確認できます。" : "まだ分析結果がありません。上の「ランキングを更新する」で初回取得、または保存済みデータの分析を開始してください。"}</p>}
-    {!mobile && <div className="hunter-desktop"><table><thead><tr><th>順位・銘柄・市場</th><th>点数・分類</th><th>RSI・下落率・出来高倍率</th><th>平均売買代金</th><th>根拠・リスク・取得状態</th><th>操作</th></tr></thead><tbody>{ranks.data?.rows.map(r => <tr key={r.code}><td>{r.rank} · {displayStockCode(r.code)} {r.name}<br />{r.marketName} · {r.asOf}</td><td>{r.score ?? "—"}点<br />{r.category}{r.candidate ? " · 候補" : ""}</td><td>{number(r.rsi)} ／ {number(r.drawdown,true)} ／ {number(r.volumeRatio)}</td><td>{number(r.averageTurnover20)}円</td><td>{r.reasons.slice(0,3).join("、")}<br />{r.risks.join("、") || "追加リスクなし"}<br />{r.acquisitionStatus} · {r.continuousSessions}営業日</td><td>{actions(r)}</td></tr>)}</tbody></table></div>}
-    {mobile && <div className="hunter-mobile">{ranks.data?.rows.map(r => <article className="card" key={r.code}><h3>{r.rank} · {displayStockCode(r.code)} {r.name}</h3><p>{r.marketName} · {r.asOf} ／ {r.score ?? "—"}点 · {r.category}</p><p>RSI {number(r.rsi)} ／ 下落 {number(r.drawdown,true)} ／ 出来高 {number(r.volumeRatio)}倍 ／ 売買代金 {number(r.averageTurnover20)}円</p><p>{r.reasons.slice(0,3).join("、")}</p><p>{r.risks.join("、")} · {r.acquisitionStatus} · {r.continuousSessions}営業日</p>{actions(r)}</article>)}</div>}
+    {!ranks.isLoading && !ranks.error && !ranks.data?.rows.length && <p>{runningJob ? "取得・分析中です。上の進捗をご確認ください。" : !unavailableView && ranks.data?.rankedCount === 0 && coverage ? "判定不能の銘柄は、上の「判定不能」から確認できます。" : coverage?.processedCount ? "絞り込み条件に一致する銘柄がありません。「絞り込みを解除」で結果を確認できます。" : "まだ分析結果がありません。上の「ランキングを更新する」で初回取得、または保存済みデータの分析を開始してください。"}</p>}
+    {!mobile && <div className="hunter-desktop"><table><thead><tr><th>順位・銘柄・市場</th><th>点数・分類</th><th>RSI・下落率・出来高倍率</th><th>平均売買代金</th><th>根拠・リスク・取得状態</th><th>操作</th></tr></thead><tbody>{ranks.data?.rows.map(r => <tr key={r.code}><td>{r.rank !== null ? `${r.rank}位 · ` : ""} {displayStockCode(r.code)} {r.name}<br />{r.marketName} · {r.asOf}</td><td>{r.score ?? "—"}点<br />{r.category}{r.candidate ? " · 候補" : ""}</td><td>{number(r.rsi)} ／ {number(r.drawdown,true)} ／ {number(r.volumeRatio)}</td><td>{number(r.averageTurnover20)}円</td><td>{r.reasons.slice(0,3).map(hunterLabel).join("、")}<br />{r.risks.map(hunterLabel).join("、") || "追加リスクなし"}<br />{acquisitionLabel[r.acquisitionStatus]} · {r.continuousSessions}営業日</td><td>{actions(r)}</td></tr>)}</tbody></table></div>}
+    {mobile && <div className="hunter-mobile">{ranks.data?.rows.map(r => <article className="card" key={r.code}><h3>{r.rank !== null ? `${r.rank}位 · ` : ""} {displayStockCode(r.code)} {r.name}</h3><p>{r.marketName} · {r.asOf} ／ {r.score ?? "—"}点 · {r.category}</p><p>RSI {number(r.rsi)} ／ 下落 {number(r.drawdown,true)} ／ 出来高 {number(r.volumeRatio)}倍 ／ 売買代金 {number(r.averageTurnover20)}円</p><p>{r.reasons.slice(0,3).map(hunterLabel).join("、")}</p><p>{r.risks.map(hunterLabel).join("、")} · {acquisitionLabel[r.acquisitionStatus]} · {r.continuousSessions}営業日</p>{actions(r)}</article>)}</div>}
     <div className="toolbar"><button disabled={!parsed.success || (parsed.data.page ?? 1) <= 1} onClick={() => update("page", String((parsed.success ? parsed.data.page : 1)-1))}>前のページ</button><span>{parsed.success ? parsed.data.page : "—"}ページ</span><button disabled={!ranks.data || ranks.data.page*ranks.data.pageSize >= ranks.data.total} onClick={() => update("page", String((parsed.success ? parsed.data.page : 1)+1))}>次のページ</button></div>
     {detail.error && <p role="alert">{detail.error.message}</p>}
     {detail.isFetching && <p role="status">詳細を読み込み中…</p>}
-    {detail.data && <Suspense fallback={<p role="status">チャート・研究画面を読み込み中…</p>}><article className="card hunter-detail"><h2>{detail.data.row.name} 底打ち詳細</h2><p>{detail.data.explanation}</p><p>{detail.data.analysis.score ?? "—"}点 ／ {detail.data.row.category}</p><HunterPriceChart chart={detail.data.analysis.chart} /><ul>{detail.data.analysis.conditions.map(c => <li key={c.code}>{c.met ? "一致" : "未一致"} · {c.label} · {c.earnedPoints}/{c.maxPoints}点</li>)}</ul><p>リスク：{detail.data.analysis.riskCodes.join("、")}</p><p>{detail.data.dejavuWarning}</p>{detail.data.dejavu && <DejavuResearch data={detail.data.dejavu} code={detail.data.row.code} date={detail.data.row.asOf} compare="" hunterJobId={detail.data.row.jobId} request={request} memories={<p>ハンターの予測原本・反省は研究ジャーナルに保存します。</p>} />}</article></Suspense>}
+    {detail.data && <Suspense fallback={<p role="status">チャート・研究画面を読み込み中…</p>}><article className="card hunter-detail"><h2>{detail.data.row.name} 底打ち詳細</h2><p>{detail.data.explanation}</p><p>{detail.data.analysis.score ?? "—"}点 ／ {detail.data.row.category}</p><HunterPriceChart chart={detail.data.analysis.chart} /><ul>{detail.data.analysis.conditions.map(c => <li key={c.code}>{c.met ? "一致" : "未一致"} · {c.label} · {c.earnedPoints}/{c.maxPoints}点</li>)}</ul><p>リスク：{detail.data.analysis.riskCodes.map(hunterLabel).join("、")}</p><p>{detail.data.dejavuWarning}</p>{detail.data.dejavu && <DejavuResearch data={detail.data.dejavu} code={detail.data.row.code} date={detail.data.row.asOf} compare="" hunterJobId={detail.data.row.jobId} request={request} memories={<p>ハンターの予測原本・反省は研究ジャーナルに保存します。</p>} />}</article></Suspense>}
     <section className="card"><h2>研究仮説の結果検証</h2><p>実運用・過去研究・walk-forwardは別集計です。方向一致率は将来の的中確率ではありません。</p><button aria-expanded={showSummary} onClick={() => setShowSummary(!showSummary)}>成績集計を{showSummary ? "閉じる" : "表示"}</button>{showSummary && summaries.isLoading && <p role="status">成績を集計中…</p>}<button disabled={busy} onClick={() => void act("/bottom/hunter/evaluations", {})}>期限後の結果を検証</button>{summaries.error && <p role="alert">{summaries.error.message}</p>}{showSummary && summaries.data?.groups.length === 0 && <p>評価対象の予測記録がありません。</p>}{showSummary && summaries.data?.groups.map(g => <article key={g.key}><p>{g.mode} ／ {g.experiment} ／ {g.horizon}営業日 ／ {g.classification} ／ {g.band}点 ／ 基準月 {g.period}</p>{g.lowSample && <strong>少数標本：評価済み20件未満で信頼性は低い集計です。</strong>}<p>未評価 {g.pending} ／ 評価可能（評価済み含む） {g.eligible ?? g.available} ／ 評価済み {g.evaluated} ／ 方向一致 {number(g.directionRate,true)} ／ 実現騰落率 {number(g.meanReturn,true)} ／ 実現中央値 {number(g.medianReturn,true)} ／ 上昇割合 {number(g.upRatio,true)} ／ 予測中央値との差 {number(g.meanError,true)} ／ 絶対誤差 {number(g.meanAbsoluteError,true)} ／ 最悪最大下落 {number(g.worstDrawdown,true)} ／ 下落分布25%・中央値・75% {number(g.drawdownDistribution?.p25,true)}・{number(g.drawdownDistribution?.median,true)}・{number(g.drawdownDistribution?.p75,true)}（{g.drawdownCount ?? 0}件）</p></article>)}</section>
     <details className="card"><summary>ジョブの進捗・中断・再開</summary>{status.data?.jobs.map(job => <article key={job.id}><p>{job.input.kind} · {job.input.asOf} · {job.status} · {job.processed}/{job.total}</p><p>{job.error}</p>{job.status !== "completed" && <><button disabled={busy || job.status === "running"} onClick={() => void act("/bottom/hunter/jobs", { resumeJobId: job.id })}>再開</button><button disabled={busy} onClick={() => void act(`/bottom/hunter/jobs/${job.id}/cancel`, {})}>キャンセル</button></>}</article>)}</details>
   </section>;

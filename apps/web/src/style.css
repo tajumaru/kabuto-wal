@@ -1513,3 +1513,20 @@ dd {
 .shell > main .hunter-more-items button:disabled { color:var(--muted); opacity:.55; }
 .hunter-desktop td:last-child { min-width:180px; }
 .hunter-desktop td { overflow-wrap:anywhere; }
+/* Override the global nowrap table style so explanations stay inside their column. */
+.hunter-desktop table { table-layout:fixed; white-space:normal; min-width:1100px; }
+.hunter-desktop :is(th,td) { white-space:normal; overflow-wrap:anywhere; max-width:none; box-sizing:border-box; line-height:1.75; }
+.hunter-desktop :is(th,td):nth-child(1) { width:23%; }
+.hunter-desktop :is(th,td):nth-child(2) { width:9%; }
+.hunter-desktop :is(th,td):nth-child(3) { width:17%; }
+.hunter-desktop :is(th,td):nth-child(4) { width:11%; }
+.hunter-desktop :is(th,td):nth-child(5) { width:24%; padding-right:24px; }
+.hunter-desktop :is(th,td):nth-child(6) { width:16%; min-width:0; }
+.hunter-desktop .hunter-actions { flex-wrap:wrap; }
+.hunter-result-tabs { display:flex; gap:8px; flex-wrap:wrap; margin:24px 0 16px; }
+.shell > main .hunter-result-tabs button { background:transparent; color:var(--text); border:1px solid var(--border); }
+.shell > main .hunter-result-tabs button[aria-pressed="true"] { background:var(--primary); color:#fff; border-color:var(--primary); }
+.hunter-period-field { display:flex; flex-direction:column; align-items:flex-start; gap:8px; min-width:0; }
+.hunter-period-field label { display:flex; flex-direction:column; gap:8px; font-size:13px; font-weight:500; width:100%; }
+.shell > main .hunter-period-button { background:transparent; color:var(--primary); border:1px solid var(--border); font-size:12px; padding:6px 10px; min-height:34px; }
+.hunter-period-field small { color:var(--muted); font-size:12px; line-height:1.7; }

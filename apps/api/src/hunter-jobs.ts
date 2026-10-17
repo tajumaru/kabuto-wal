@@ -176,7 +176,8 @@ export class HunterJobs {
       if (status === "completed") await this.service.store.lock(async () => {
         const owner = await this.get(id);
         if (owner.lease?.token !== token || owner.cancelRequested) throw Error("完了前にジョブが中断されました");
-        await this.service.store.write(`${base}/rankings/${id}/index.json`, rows.sort(compareHunterRows).map((r, i) => ({ ...r, rank: i + 1 })));
+        let rank = 0;
+        await this.service.store.write(`${base}/rankings/${id}/index.json`, rows.sort(compareHunterRows).map(r => ({ ...r, rank: r.score !== null && r.category !== "判定不能" ? ++rank : null })));
         await this.service.store.write(`${base}/indexes/latest.json`, { jobId: id, asOf: job!.input.asOf, cutoff: job!.cutoff, datasetId: index.id });
         await this.service.store.write(`${base}/indexes/dates/${job!.input.asOf}.json`, { jobId: id });
       });
