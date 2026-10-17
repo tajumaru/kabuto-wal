@@ -99,6 +99,7 @@ export class HunterJobs {
     let job: HunterJob | null = null;
     try {
       job = await this.acquire(id); if (!job) return await this.get(id);
+      if (job.mode !== (this.service.mode === "demo" ? "demo" : "research")) throw Error("ジョブのデータ区分が一致しません");
       const token = job.lease!.token;
       let lastHeartbeat = this.now().getTime();
       const cancelled = async () => {
@@ -108,7 +109,7 @@ export class HunterJobs {
       if (job.input.kind !== "scan") {
         await this.acquireMarket(job, cancelled);
         // A new acquisition's data did not exist at job start. Freeze after acquisition.
-        if (!job.universeId) job = await this.patch(id, token, { cutoff: this.now().toISOString() });
+        if (!job.universeId && !job.input.cutoff) job = await this.patch(id, token, { cutoff: this.now().toISOString() });
       }
       const cal = await this.service.store.read<Calendar>("market/calendar.json", []);
       const universe = job.universeId ? await this.service.store.read<HunterUniverse>(`${base}/universe/${job.universeId}.json`) : await buildHunterUniverse(this.service, job.input.asOf, job.cutoff);
@@ -211,7 +212,7 @@ export class HunterJobs {
     }
     const row = hunterRowSchema.parse({ schemaVersion: 1, methodVersion: HUNTER_METHOD, jobId: job.id,
       code: entry.code, name: entry.name, market: entry.market, marketName: entry.marketName, rank: null,
-      asOf: job.input.asOf, cutoff: job.cutoff, inputId: hash([index.id, analysis.inputRevisionIds]),
+      asOf: job.input.asOf, cutoff: job.cutoff, inputId: hash([job.analysisId, index.id, analysis.inputRevisionIds]),
       score: analysis.score, ...classifyBottom(analysis),
       rsi: analysis.indicators?.rsi14 ?? null, drawdown: analysis.indicators?.drawdown60 ?? null, volumeRatio: analysis.indicators?.volumeRatio ?? null,
       averageTurnover20: analysis.averageTurnover20 ?? null, liquidity: analysis.liquidity,

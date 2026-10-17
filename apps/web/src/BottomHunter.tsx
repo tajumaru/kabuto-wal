@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { hunterForecastResponseSchema, hunterSummarySchema, hunterCategory, hunterDetailSchema, hunterFilterSchema, hunterJobSchema, hunterRankingsSchema, hunterStatusSchema, type HunterRow } from "../../../packages/core/hunter-schema";
@@ -46,13 +46,19 @@ export function BottomHunter({ request }: { request: Request }) {
       void client.invalidateQueries({ queryKey: ["hunter-rankings"] });
     previousCompletion.current = completion;
   }, [completion, client]);
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const previous = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
+    return () => { window.history.scrollRestoration = previous; };
+  }, []);
+  useLayoutEffect(() => {
     if (!ranks.data) return;
     const key = `hunter-scroll:${queryString}`;
     if (restored.current !== key) { window.scrollTo(0, Number(sessionStorage.getItem(key) || 0)); restored.current = key; }
     const save = () => sessionStorage.setItem(key, String(window.scrollY));
     window.addEventListener("scroll", save, { passive: true });
-    return () => window.removeEventListener("scroll", save);
+    window.addEventListener("pagehide", save);
+    return () => { window.removeEventListener("scroll", save); window.removeEventListener("pagehide", save); };
   }, [queryString, ranks.data]);
   const coverage = ranks.data?.coverage;
   const asOf = params.get("asOf") || coverage?.asOf || "";

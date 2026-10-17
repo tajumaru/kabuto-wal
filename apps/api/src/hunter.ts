@@ -1,4 +1,4 @@
-import { hunterDetailKey } from "./hunter-consistency";
+import { readHunterDetail } from "./hunter-consistency";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Service } from "./service";
@@ -8,7 +8,6 @@ import { recordHunterForecast, hunterEvaluationSummary } from "./hunter-journal"
 import { HUNTER_FORECAST_METHOD } from "../../../packages/core/hunter-method";
 import { compareHunterRows, explainBottom } from "../../../packages/core/hunter";
 import { hunterCode, hunterFilterSchema, hunterRankingsSchema, hunterStatusSchema, hunterDetailSchema, hunterJobSchema, hunterRowSchema, type HunterCoverage, type HunterRow } from "../../../packages/core/hunter-schema";
-import type { BottomAnalysis } from "../../../packages/core/bottom-schema";
 
 export const HUNTER_BASE = "market/hunter";
 // Called inside the existing watchlist writer lock, after the ten-stock limit check.
@@ -44,7 +43,7 @@ export async function hunterCandidate(service: Service, code: string, id: string
   if (!job.datasetId) return null;
   const row = await service.store.read<HunterRow | null>(`${HUNTER_BASE}/rankings/${id}/${code}.json`, null);
   if (!row) return null;
-  const detail = await service.store.read<{ analysis: BottomAnalysis }>(hunterDetailKey(job, code));
+  const detail = await readHunterDetail(service, job, code);
   let dejavu = null, dejavuWarning: string | undefined;
   if (includeResearch && detail.analysis.status === "ready") {
     try {

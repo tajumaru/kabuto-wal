@@ -6,6 +6,7 @@ import { Service } from "../apps/api/src/service";
 import { createApp } from "../apps/api/src/server";
 import { HunterJobs } from "../apps/api/src/hunter-jobs";
 import { hunterRankingsSchema, hunterDetailSchema } from "../packages/core/hunter-schema";
+import { hash } from "../packages/integrations/adjusted-series";
 import { demoBars } from "../fixtures/demo";
 
 it("ページング・共有応答・詳細・不正入力・既存API互換を検証", async () => {
@@ -31,6 +32,21 @@ it("ページング・共有応答・詳細・不正入力・既存API互換を�
     expect((await app.inject("/api/bottom/analysis?code=72030&asOf=2026-10-09")).json().conditions).toHaveLength(10);
     expect((await app.inject({ method: "POST", url: "/api/bottom/hunter/jobs", headers: { origin: "https://bad.invalid" }, payload: { asOf: "2026-10-09" } })).statusCode).toBe(403);
     expect((await app.inject(`/api/bottom/hunter/jobs/${job.id}`)).json().status).toBe("completed");
+    const savedJob = await engine.get(job.id);
+    const key = `market/hunter/details/${savedJob.analysisId}/72030.json`;
+    const detail = await service.store.read(key);
+    await service.store.write(key, { ...detail, analysis: { ...detail.analysis, inputRevisionIds: ["corrupt-revision"] } });
+    expect((await app.inject(`/api/bottom/hunter/candidates/72030?jobId=${job.id}`)).json().error).toContain("入力条件");
+    await service.store.write(key, detail);
+    const legacyInput = hash([savedJob.datasetId, detail.analysis.inputRevisionIds]);
+    await service.store.write(`market/hunter/details/${savedJob.datasetId}/72030.json`, { ...detail, row: { ...detail.row, inputId: legacyInput } });
+    await service.store.write(`market/hunter/jobs/${job.id}.json`, { ...savedJob, analysisId: undefined });
+    await service.store.write(`market/hunter/rankings/${job.id}/72030.json`, { ...detail.row, inputId: legacyInput });
+    expect((await app.inject(`/api/bottom/hunter/candidates/72030?jobId=${job.id}`)).statusCode).toBe(200);
+    await service.store.write(`market/hunter/jobs/${job.id}.json`, savedJob);
+    await service.store.write(`market/hunter/rankings/${job.id}/72030.json`, detail.row);
+
+
     const master = await service.store.read<{ providerCode: string }[]>("market/master.json");
     await service.store.write("market/master.json", master.filter(m => m.providerCode !== "72030"));
     expect((await app.inject({ method: "POST", url: "/api/watchlist", payload: { code: "72030", hunterJobId: job.id } })).statusCode).toBe(200);

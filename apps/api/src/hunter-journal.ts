@@ -1,4 +1,4 @@
-import { hunterDetailKey } from "./hunter-consistency";
+import { readHunterDetail } from "./hunter-consistency";
 import { z } from "zod";
 import type { Service } from "./service";
 import { predictionSchema, targetDate, evaluate, type Calendar, type Prediction } from "../../../packages/core/index";
@@ -8,7 +8,6 @@ import { hash } from "../../../packages/integrations/adjusted-series";
 import { MarketIngestion } from "../../../packages/integrations/market-ingestion";
 import { readHunterSeries, searchDejavuContext } from "./hunter-research";
 import { snapshot } from "./dejavu";
-import type { BottomAnalysis } from "../../../packages/core/bottom-schema";
 import { ensureHunterMemory } from "./hunter-memory";
 
 export const hunterForecastInputSchema = z.object({ jobId: z.string().uuid(), code: hunterCode, recordingMode: z.enum(["research", "walk-forward", "live"]).default("research") }).strict();
@@ -17,7 +16,7 @@ export async function recordHunterForecast(service: Service, raw: unknown, now =
   const input = hunterForecastInputSchema.parse(raw);
   const job = hunterJobSchema.parse(await service.store.read(`market/hunter/jobs/${input.jobId}.json`));
   if (!job.datasetId) throw Error("走査結果がありません");
-  const detail = await service.store.read<{ analysis: BottomAnalysis; row: { candidate: boolean; category: string } }>(hunterDetailKey(job, input.code));
+  const detail = await readHunterDetail(service, job, input.code);
   if (!detail.row.candidate || detail.analysis.status !== "ready") throw Error("底打ち候補の判定が必要です");
   const today = now.toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
   if (input.recordingMode === "live" && (job.input.asOf !== today || job.cutoff.slice(0,10) !== today)) throw Error("過去日付の仮説を実運用として記録できません");
@@ -35,7 +34,7 @@ export async function recordHunterForecast(service: Service, raw: unknown, now =
     if (!s.sampleCount || s.medianReturn === null || s.upRatio === null || !s.percentileRange) throw Error("デジャヴ事例不足のため予測中央値を記録できません");
     const target = targetDate(calendar, job.input.asOf, h);
     if (experiment === "prospective" && target <= today) throw Error("実績が既知の対象日は実運用に含められません");
-    const id = hunterId([service.mode, input.code, job.input.asOf, job.cutoff, job.datasetId, HUNTER_FORECAST_METHOD, experiment, h, research.inputRevisionIds, stats.exampleIds]);
+    const id = hunterId([service.mode, input.code, job.input.asOf, job.cutoff, job.datasetId, ...(job.analysisId ? [job.analysisId] : []), HUNTER_FORECAST_METHOD, experiment, h, research.inputRevisionIds, stats.exampleIds]);
     return predictionSchema.parse({ schemaVersion: 1, recordId: id, kind: "prediction", predictionId: id,
       createdAt: now.toISOString(), generatedAt: now.toISOString(), source: research.source, providerCode: input.code,
       mode: service.mode === "demo" ? "demo" : experiment === "prospective" ? "live" : experiment === "walk-forward" ? "backtest" : "research",
@@ -46,7 +45,7 @@ export async function recordHunterForecast(service: Service, raw: unknown, now =
       candidateIds: stats.exampleIds, featureVersion: detail.analysis.featureVersion, methodVersion: HUNTER_FORECAST_METHOD,
       model: "local-numeric", promptVersion: "hunter-deterministic-v1", reason: "底打ち候補＋上位20件以内の非重複類似事例の中央値。上昇割合は未校正の経験分布です。",
       falsification: "期限後の方向・中央値誤差・最大下落を検証。過去検証と実運用を分離し、原因は推測しない。",
-      hunter: { schemaVersion: 1, methodVersion: HUNTER_FORECAST_METHOD, jobId: job.id, datasetId: job.datasetId, cutoff: job.cutoff,
+      hunter: { schemaVersion: 1, methodVersion: HUNTER_FORECAST_METHOD, jobId: job.id, datasetId: job.datasetId, analysisId: job.analysisId, cutoff: job.cutoff,
         experiment, classification: detail.row.category, analysis: detail.analysis, statistics: stats, comparisons: research.statistics.comparisons,
         recordedAt: now.toISOString(), probabilityMeaning: "uncalibrated_empirical_ratio" },
     });

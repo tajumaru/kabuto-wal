@@ -1,4 +1,5 @@
-import { it, expect, beforeEach, afterEach } from "vitest";
+import { it, expect, beforeEach, afterEach, vi } from "vitest";
+import { promises as fs } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -66,4 +67,21 @@ it("暗号化バックアップで原本・salt・同期状態と索引を復元
     "predictions/p/original.json",
   ]);
   await expect(target.import(payload, "incorrect-password")).rejects.toThrow();
+});
+
+it.runIf(process.platform === "win32")("一時的なrename競合を再試行し、恒久失敗でも旧JSONを削除しない", async () => {
+  await store.write("settings/retry.json", { value: 1 });
+  const error = Object.assign(Error("temporarily busy"), { code: "EPERM" });
+  const transient = vi.spyOn(fs, "rename").mockRejectedValueOnce(error);
+  try {
+    await store.write("settings/retry.json", { value: 2 });
+    expect(transient).toHaveBeenCalledTimes(2);
+    expect(await store.read("settings/retry.json")).toEqual({ value: 2 });
+  } finally { transient.mockRestore(); }
+  const permanent = vi.spyOn(fs, "rename").mockRejectedValue(error);
+  try {
+    await expect(store.write("settings/retry.json", { value: 3 })).rejects.toThrow("temporarily busy");
+    expect(permanent).toHaveBeenCalledTimes(6);
+    expect(await store.read("settings/retry.json")).toEqual({ value: 2 });
+  } finally { permanent.mockRestore(); }
 });

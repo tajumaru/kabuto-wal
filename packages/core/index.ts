@@ -167,7 +167,7 @@ export const predictionSchema = z
     falsification: z.string(),
     hunter: z.object({
       schemaVersion: z.literal(1), methodVersion: z.literal(HUNTER_FORECAST_METHOD),
-      jobId: z.string().uuid(), datasetId: z.string(), cutoff: z.string().datetime(),
+      jobId: z.string().uuid(), datasetId: z.string(), analysisId: z.string().optional(), cutoff: z.string().datetime(),
       experiment: z.enum(["retrospective", "walk-forward", "prospective"]),
       classification: hunterCategory, analysis: bottomAnalysisSchema,
       statistics: dejavuConsensusSchema, comparisons: z.array(dejavuConsensusSchema),

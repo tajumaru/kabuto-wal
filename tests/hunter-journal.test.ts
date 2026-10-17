@@ -18,6 +18,7 @@ it("原本を不変保存し、期限後評価を別保存して過去研究と�
     await engine.run(job.id);
     const first = await recordHunterForecast(service, { jobId: job.id, code: "72030", recordingMode: "walk-forward" });
     expect(first.records).toHaveLength(3);
+    expect(first.records[0].hunter?.analysisId).toBe((await engine.get(job.id)).analysisId);
     expect(first.records.every(p => p.mode === "backtest" && p.hunter?.experiment === "walk-forward")).toBe(true);
     const originals = JSON.stringify(first.records);
     expect(JSON.stringify((await recordHunterForecast(service, { jobId: job.id, code: "72030", recordingMode: "walk-forward" }, new Date("2026-10-18T00:00:00.000Z"))).records)).toBe(originals);

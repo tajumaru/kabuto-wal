@@ -82,3 +82,24 @@ it("完全一致した入力だけ再利用し、条件変更と別workerを拒�
     expect(results.filter(r => r.status === "rejected")).toHaveLength(1);
   } finally { await rm(dir, { recursive: true, force: true, maxRetries: 5 }); }
 });
+
+it("分析中キャンセル後の結果保存を防ぎ、データ区分の変更を拒否する", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "hunter-cancel-write-"));
+  const service = new Service(dir, "demo", false);
+  try {
+    await service.init();
+    const engine = new HunterJobs(service), job = await engine.create({ asOf: "2026-10-09" });
+    const original = service.history.bind(service); let calls = 0;
+    const spy = vi.spyOn(service, "history").mockImplementation(async code => {
+      if (++calls === 5) await engine.cancel(job.id);
+      return original(code);
+    });
+    expect((await engine.run(job.id)).status).toBe("cancelled");
+    expect(await engine.rows(job.id)).toEqual([]);
+    spy.mockRestore();
+    const other = await engine.create({ asOf: "2026-10-09" });
+    service.mode = "live";
+    await expect(engine.run(other.id)).rejects.toThrow("データ区分");
+    expect(await engine.rows(other.id)).toEqual([]);
+  } finally { await rm(dir, { recursive: true, force: true, maxRetries: 5 }); }
+});

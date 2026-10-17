@@ -68,7 +68,16 @@ export class Store {
     } finally {
       await handle.close();
     }
-    await fs.rename(temp, dest);
+    // Windows readers/virus scanners may briefly hold the destination open.
+    // Retry the same atomic replacement; never unlink the existing record.
+    for (let attempt = 0; ; attempt++) {
+      try { await fs.rename(temp, dest); break; }
+      catch (error) {
+        if (process.platform !== "win32" || attempt >= 5 ||
+          !["EPERM", "EACCES", "EBUSY"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+        await new Promise(resolve => setTimeout(resolve, 20 * (attempt + 1)));
+      }
+    }
     if (process.platform !== "win32") {
       const dir = await fs.open(path.dirname(dest), "r");
       try {

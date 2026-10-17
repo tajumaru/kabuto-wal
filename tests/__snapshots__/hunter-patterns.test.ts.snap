@@ -56,7 +56,7 @@ exports[`人工相場の判定時点の分類・点数・リスクを固定し�
       "long_trend_down",
       "new_low",
     ],
-    "score": 20,
+    "score": 40,
   },
   "short": {
     "category": "判定不能",

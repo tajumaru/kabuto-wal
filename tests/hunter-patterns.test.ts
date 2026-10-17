@@ -18,6 +18,10 @@ it("人工相場の判定時点の分類・点数・リスクを固定し、将�
       const a = await analyzeBottom(service, "72030", f.asOf, new Date("2026-10-10"), { cutoff: f.cutoff, series: f.series });
       results[name] = { score: a.score, category: classifyBottom(a).category, risks: a.riskCodes };
       expect(a.inputRevisionIds).not.toContain("future-revision");
+      if (name === "rsi-only") {
+        expect(a.conditions.find(c => c.code === "rsi_recovery")?.met).toBe(true);
+        expect(a.indicators!.close).toBeLessThan(a.indicators!.previousClose!);
+      }
     }
     expect(results).toMatchSnapshot();
     expect(results["false-rebound"]).toEqual(results.revision);

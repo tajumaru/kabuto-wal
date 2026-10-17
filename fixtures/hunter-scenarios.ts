@@ -9,7 +9,7 @@ export function hunterScenario(name: Scenario) {
     let close = i < 74 ? 180 - 1.5*i : 70.5 + (i-73)*0.3;
     if (name === "v-recovery") close = i < 70 ? 180-i*1.5 : 75+(i-69)*3;
     if (name === "base-building") close = i < 60 ? 180-i*1.5 : 90+Math.sin(i)*0.2;
-    if (name === "rsi-only") close = 180-i*1.2+(i%4 === 0 ? 0.2 : 0);
+    if (name === "rsi-only") close = i < 77 ? 180-i*1.2 : 180-76*1.2+(i === 77 ? 0.4 : i === 78 ? 0.1 : -0.2);
     const scale = name === "split" && i < 40 ? 2 : name === "consolidation" && i < 40 ? 0.5 : 1;
     const row = { Code: "72030", Date: b.sessionDate, O: (close-0.2)*scale, H: (close+0.5)*scale, L: (close-0.6)*scale, C: close*scale,
       Vo: name === "halt" && i === 79 ? 0 : name === "volume-reversal" && i === 79 ? 3000000 : 1000000,
