@@ -21,6 +21,7 @@ function RetryMemorySync({ memory }: { memory: any }) {
 }
 
 export const memoryKindLabel = (kind: string) => ({
+  hunter_reflection: "底打ちハンターの反省", hunter_research_summary: "底打ちハンターの研究要約",
   dejavu_memory: "似た値動きの分析", dejavu_reflection: "デジャヴの反省ノート", user_memory: "方針・メモ",
   prediction_memory: "予測の記録", lesson_memory: "検証の振り返り",
   market_analysis: "相場の分析", chat_memory: "会話の記録",

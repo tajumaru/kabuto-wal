@@ -8,6 +8,7 @@ import { MarketIngestion } from "../../../packages/integrations/market-ingestion
 import { readHunterSeries, searchDejavuContext } from "./hunter-research";
 import { snapshot } from "./dejavu";
 import type { BottomAnalysis } from "../../../packages/core/bottom-schema";
+import { ensureHunterMemory } from "./hunter-memory";
 
 export const hunterForecastInputSchema = z.object({ jobId: z.string().uuid(), code: hunterCode, recordingMode: z.enum(["research", "walk-forward", "live"]).default("research") }).strict();
 export const hunterId = (parts: unknown) => { const h = hash(parts); return `${h.slice(0,8)}-${h.slice(8,12)}-5${h.slice(13,16)}-a${h.slice(17,20)}-${h.slice(20,32)}`; };
@@ -57,6 +58,7 @@ export async function recordHunterForecast(service: Service, raw: unknown, now =
       if (!old) await service.store.write(original, p, true);
       if (!await service.store.read(`predictions/${p.predictionId}/state.json`, null)) await service.store.write(`predictions/${p.predictionId}/state.json`, { schemaVersion: 1, status: "pending" });
       records.push(old ?? p);
+      await ensureHunterMemory(service, old ?? p);
     }
     await service.store.rebuild(); return { records, note: "ローカル保存。市場データの外部送信は行いません。" };
   });
@@ -95,6 +97,7 @@ export async function evaluateHunterDue(service: Service, now = new Date()) {
       count++;
     }
     await service.store.write(`predictions/${p.predictionId}/state.json`, { schemaVersion: 1, status: "evaluated" });
+    await ensureHunterMemory(service, p, { evaluationId, actualReturn: result.actualReturn, directionMatch: result.directionMatch, maxDrawdown: result.maxDrawdown });
   }
   return count;
 }

@@ -75,6 +75,10 @@ export async function syncMemories(
   const summary = { connected: !!provider, synced: 0, accepted: 0, failed: 0, uncertain: 0, skipped: 0 };
   if (!provider) return summary;
   for (const memory of await store.all("memories")) {
+    if (["hunter_reflection", "hunter_research_summary"].includes(memory.kind) &&
+      (process.env.ALLOW_MARKET_DATA_TO_MEMWAL !== "true" || process.env.JQUANTS_MEMWAL_RIGHTS_CONFIRMED !== "true")) {
+      summary.skipped++; continue;
+    }
     if (!memory.active || (memory.kind !== "user_memory" && !allowMarket))
       continue;
     const key = `sync/${memory.recordId}.json`;
