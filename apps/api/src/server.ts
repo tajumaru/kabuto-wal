@@ -32,7 +32,10 @@ import {
 } from "../../../packages/integrations/anchor";
 const code = z.string().regex(/^[A-Z0-9]{4,5}$/);
 const id = z.string().uuid();
-export async function createApp(service = new Service()) {
+export async function createApp(
+  service = new Service(),
+  allowedOrigins = [process.env.APP_ORIGIN || "http://localhost:5173"],
+) {
   if (
     service.mode !== "demo" &&
     (!process.env.OWNER_ADDRESS ||
@@ -56,7 +59,7 @@ export async function createApp(service = new Service()) {
     if (
       !["GET", "HEAD"].includes(req.method) &&
       req.headers.origin &&
-      req.headers.origin !== (process.env.APP_ORIGIN || "http://localhost:5173")
+      !allowedOrigins.includes(req.headers.origin)
     )
       return reply.code(403).send({ error: "Origin不一致" });
     if (

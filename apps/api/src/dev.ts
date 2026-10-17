@@ -20,7 +20,6 @@ async function availablePort(start: number, host: string) {
   );
 }
 
-const app = await createApp();
 const host = process.env.HOST || "127.0.0.1";
 const preferred = z.coerce
   .number()
@@ -38,6 +37,11 @@ const webPort = await availablePort(
     .parse(process.env.WEB_PORT || 5173),
   "127.0.0.1",
 );
+const app = await createApp(undefined, [
+  `http://127.0.0.1:${webPort}`,
+  `http://localhost:${webPort}`,
+  ...(process.env.APP_ORIGIN ? [process.env.APP_ORIGIN] : []),
+]);
 if (port !== preferred)
   console.log(`${preferred}番は使用中のため、APIを${port}番で起動します。`);
 await app.listen({ host, port });
