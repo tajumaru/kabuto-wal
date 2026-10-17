@@ -89,12 +89,13 @@ export async function jquantsRequest(
     if (response.status !== 429 && response.status < 500)
       throw Error(`J-Quants HTTP ${response.status}`);
     const until = Math.max(
-      retryAfter(response.headers.get("retry-after"), Date.now()) ?? 0,
+      retryAfter(response.headers.get("retry-after"), Date.now()) ?? (response.status === 429 ? Date.now() + 60000 : 0),
       Date.now() + 1000 * 2 ** attempt + Math.floor(Math.random() * 250),
     );
     await gate.deferUntil(until);
     if (until - started > 300000)
       throw new RequestDeferred(new Date(until).toISOString());
+    if (attempt === 3 && response.status === 429) throw new RequestDeferred(new Date(until).toISOString());
     if (attempt === 3)
       throw Error(`J-Quants HTTP ${response.status}（再試行上限）`);
   }

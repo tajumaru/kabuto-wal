@@ -24,6 +24,14 @@ import {
   readDerivedSeries,
 } from "../packages/integrations/market-ingestion";
 const gate = { wait: async () => {}, deferUntil: async () => {} };
+it("Retry-Afterのない429は1分待機し、制限継続時は再開可能な待機にする", async () => {
+  const started = Date.now();
+  const limiter = { wait: vi.fn(async () => {}), deferUntil: vi.fn<(time: number) => Promise<void>>().mockResolvedValue(undefined) };
+  const fetcher = vi.fn().mockImplementation(async () => new Response("", { status: 429 }));
+  await expect(jquantsRequest("https://api.jquants.com/v2/test", "fixture", fetcher, limiter)).rejects.toBeInstanceOf(RequestDeferred);
+  expect(fetcher).toHaveBeenCalledTimes(4);
+  expect(limiter.deferUntil.mock.calls.every(call => Number(call[0]) >= started + 60000)).toBe(true);
+});
 const dates = ["2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16"];
 const calendar = dates.map((date) => ({ date, open: true }));
 const raw = (date: string, extra: Partial<RawDaily> = {}): RawDaily => ({
