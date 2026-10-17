@@ -6,6 +6,7 @@ import { bitcoin, bitcoinAt } from "../../../packages/integrations/bitcoin";
 import { verifyMemwalAccount } from "../../../packages/integrations/sui";
 import { collectNotices } from "./assistant";
 import { reflectionNamespace } from "./dejavu-journal";
+import { evaluateHunterDue } from "./hunter-journal";
 import { dataWindow } from "../../../packages/integrations/jquants-plan";
 import { demoBars, calendar, master } from "../../../fixtures/demo";
 import {
@@ -360,9 +361,10 @@ export class Service {
     return p;
   }
   async evaluateDue() {
-    let count = 0;
+    let count = await evaluateHunterDue(this);
     const histories = new Map<string, Bar[]>();
     for (const p of await this.predictions()) {
+      if (p.hunter) continue;
       if (!histories.has(p.providerCode)) histories.set(p.providerCode, await this.history(p.providerCode));
       const bars = histories.get(p.providerCode)!;
       if (p.targetSessionDate > (bars.at(-1)?.sessionDate || "")) continue;

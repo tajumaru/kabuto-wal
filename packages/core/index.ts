@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { bottomAnalysisSchema } from "./bottom-schema";
+import { dejavuConsensusSchema } from "./dejavu-stat-schema";
+import { HUNTER_FORECAST_METHOD, hunterCategory } from "./hunter-method";
 export const barSchema = z.object({
   providerCode: z.string().regex(/^[A-Z0-9]{4,5}$/),
   sessionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -162,6 +165,14 @@ export const predictionSchema = z
     promptVersion: z.string(),
     reason: z.string(),
     falsification: z.string(),
+    hunter: z.object({
+      schemaVersion: z.literal(1), methodVersion: z.literal(HUNTER_FORECAST_METHOD),
+      jobId: z.string().uuid(), datasetId: z.string(), cutoff: z.string().datetime(),
+      experiment: z.enum(["retrospective", "walk-forward", "prospective"]),
+      classification: hunterCategory, analysis: bottomAnalysisSchema,
+      statistics: dejavuConsensusSchema, comparisons: z.array(dejavuConsensusSchema),
+      recordedAt: z.string().datetime(), probabilityMeaning: z.literal("uncalibrated_empirical_ratio"),
+    }).optional(),
     dejavu: z
       .object({
         schemaVersion: z.literal(1),
@@ -183,7 +194,7 @@ export const predictionSchema = z
   })
   .refine(
     (p) =>
-      p.methodVersion === "dejavu-consensus-v1"
+      p.methodVersion === HUNTER_FORECAST_METHOD ? !!p.hunter : p.methodVersion === "dejavu-consensus-v1"
         ? !!p.dejavu
         : p.sampleCount >= 20,
     "通常予測は20件以上、デジャヴ予測は分析根拠が必要です",

@@ -195,7 +195,7 @@ export class MarketIngestion {
       throw error;
     }
   }
-  async series(code: string, asOf: string, cutoff: string, from: string, indexedObservations?: RawObservation[]) {
+  async series(code: string, asOf: string, cutoff: string, from: string, indexedObservations?: RawObservation[], persist = true) {
     z.string()
       .regex(/^[A-Z0-9]{4,5}$/)
       .parse(code);
@@ -241,7 +241,7 @@ export class MarketIngestion {
     )
       throw Error("指定期間の原本不足");
     const result = adjustedSeries(observations, code, asOf, cutoff, calendar);
-    await this.store.lock(async () => {
+    if (persist) await this.store.lock(async () => {
       const target = `market/bottom-series/${code}/${asOf}/${result.seriesId}.json`;
       if (!(await this.store.read(target, null)))
         await this.store.write(

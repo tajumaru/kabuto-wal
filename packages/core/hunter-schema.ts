@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { bottomAnalysisSchema } from "./bottom-schema";
 import { dejavuResultSchema } from "./dejavu-api-schema";
+import { predictionSchema } from "./index";
 
-export const HUNTER_METHOD = "bottom-hunter-v1";
+import { HUNTER_METHOD, hunterCategory } from "./hunter-method";
+export { HUNTER_METHOD, hunterCategory } from "./hunter-method";
 export const hunterCode = z.string().regex(/^[A-Z0-9]{5}$/);
-export const hunterCategory = z.enum(["反転兆候あり", "底固め観察", "反発進行中", "警戒", "判定不能"]);
 export const universeEntrySchema = z.object({
   code: hunterCode, name: z.string(), market: z.string(), marketName: z.string(),
   productCategory: z.string().nullable(), listingStatus: z.literal("present_at_asof"),
@@ -74,3 +75,8 @@ export type HunterRow = z.infer<typeof hunterRowSchema>;
 export type HunterCoverage = z.infer<typeof hunterCoverageSchema>;
 export type HunterUniverse = z.infer<typeof hunterUniverseSchema>;
 export type HunterFilter = z.infer<typeof hunterFilterSchema>;
+export const hunterForecastResponseSchema = z.object({ records: z.array(predictionSchema), note: z.string() });
+export const hunterSummarySchema = z.object({ groups: z.array(z.object({
+  key: z.string(), total: z.number(), pending: z.number(), available: z.number(), evaluated: z.number(),
+  directionRate: z.number().nullable(), meanReturn: z.number().nullable(), meanError: z.number().nullable(), worstDrawdown: z.number().nullable(),
+})) });

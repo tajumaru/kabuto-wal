@@ -96,6 +96,7 @@ export async function searchDejavu(
     ...result,
     consensus: consensus(result.examples),
     statistics: consensusComparison(statisticalExamples),
+    statisticsInputRevisionIds: input ? statisticalExamples.flatMap(e => e.revisionIds) : undefined,
     dna: result.examples.map(dna),
     recordId,
     providerCode: code,

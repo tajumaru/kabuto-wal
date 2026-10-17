@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { Service } from "./service";
 import { HunterJobs } from "./hunter-jobs";
 import { searchDejavuContext } from "./hunter-research";
+import { recordHunterForecast, hunterEvaluationSummary } from "./hunter-journal";
+import { HUNTER_FORECAST_METHOD } from "../../../packages/core/hunter-method";
 import { explainBottom } from "../../../packages/core/hunter";
 import { hunterCode, hunterFilterSchema, hunterRankingsSchema, hunterStatusSchema, hunterDetailSchema, hunterJobSchema, type HunterCoverage, type HunterRow } from "../../../packages/core/hunter-schema";
 import type { BottomAnalysis } from "../../../packages/core/bottom-schema";
@@ -73,4 +75,15 @@ export function registerHunter(app: FastifyInstance, service: Service) {
     return reply.code(202).send(job);
   });
   app.post("/api/bottom/hunter/jobs/:id/cancel", async req => engine.cancel(z.object({ id: z.string().uuid() }).parse(req.params).id));
+  app.post("/api/bottom/hunter/forecasts", async req => recordHunterForecast(service, req.body));
+  app.get("/api/bottom/hunter/forecasts", async req => {
+    const q = z.object({ jobId: z.string().uuid().optional(), page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25) }).strict().parse(req.query);
+    const records = (await service.predictions()).filter(p => p.methodVersion === HUNTER_FORECAST_METHOD && (!q.jobId || p.hunter?.jobId === q.jobId));
+    return { records: records.slice((q.page-1)*q.pageSize, q.page*q.pageSize), total: records.length, page: q.page, pageSize: q.pageSize };
+  });
+  app.post("/api/bottom/hunter/evaluations", async () => service.store.lock(async () => {
+    const { evaluateHunterDue } = await import("./hunter-journal");
+    return { count: await evaluateHunterDue(service) };
+  }));
+  app.get("/api/bottom/hunter/evaluations", async () => ({ groups: await hunterEvaluationSummary(service) }));
 }
