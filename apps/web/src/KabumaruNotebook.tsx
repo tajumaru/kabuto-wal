@@ -6,6 +6,7 @@ import { notebookOriginalSchema,notebookSummarySchema,notebookThemes,notebookThe
 import { cohortManifestSchema } from "../../../packages/core/hunter-cohort-schema";
 import { hunterStatusSchema } from "../../../packages/core/hunter-schema";
 import { KabumaruPortrait } from "./Kabumaru";
+import { NotebookMemory } from "./NotebookMemory";
 import "./KabumaruNotebook.css";
 type Request=(url:string,body?:unknown)=>Promise<unknown>;
 const pct=(v:number|null)=>v===null?"未評価":`${(v*100).toFixed(2)}%`;
@@ -52,6 +53,7 @@ export function KabumaruNotebook({request}:{request:Request}){
       <section className="card"><h2>成功事例と失敗事例</h2>{[["成功例",original.successes],["失敗例",original.failures]].map(([title,cases])=><div key={title as string}><h3>{title as string}</h3>{(cases as typeof original.successes).length===0&&<p>確認できる事例がありません。</p>}{(cases as typeof original.successes).map(c=><p key={c.evaluationId}>{c.code} · {c.horizon}営業日 · {c.candidate?"候補":"非候補"} · {c.score??"判定不能"}点 · {pct(c.actualReturn)} ／ 評価ID {c.evaluationId}</p>)}</div>)}</section>
       <section className="card"><h2>かぶまるの研究コメント</h2>{note.data?.summary.statements.map((s,i)=><p key={i}>{s.text}（標本{s.sampleCount}件）{s.evidenceIds.map(e=><a key={e} href={`#notebook-evidence-${e}`}>根拠</a>)}</p>)}<h3>信頼性・データ不足</h3>{original.limitations.map((l,i)=><p key={i}>{l}</p>)}<p>次回確認する条件：{original.nextConditions.join("、")}</p></section>
       <details className="card"><summary>Evidence一覧</summary>{original.evidence.map(e=><details key={e.evidenceId} id={`notebook-evidence-${e.evidenceId}`}><summary>根拠 {e.evidenceId.slice(0,12)} · {e.sampleCount}件</summary><p>{e.evidenceId}</p><p>コホートID {e.cohortIds.join("、")}</p><p>評価revision {e.evaluationIds.length}件</p><pre>{e.evaluationIds.slice(0,50).join("\n")}</pre></details>)}</details>
+      <NotebookMemory key={original.notebookId} id={original.notebookId} theme={original.theme} createdAt={original.createdAt} request={request}/>
     </>}
     <section className="card"><h2>過去の研究ノート履歴</h2>{history.isLoading&&<p role="status">履歴を読み込み中…</p>}{history.data?.records.length===0&&<p>保存済み研究ノートはありません。</p>}{history.data?.records.map(n=><p key={n.notebookId}><Link to={`?id=${n.notebookId}&page=${page}`}>{notebookThemes[n.theme]} · {n.period.from}〜{n.period.to} · {n.mode}</Link></p>)}<button disabled={page<=1} onClick={()=>update("page",String(page-1))}>前のページ</button><span>{page}ページ</span><button disabled={page*20>=Math.max(cohorts.data?.total??0,history.data?.total??0)} onClick={()=>update("page",String(page+1))}>次のページ</button></section>
   </section>;

@@ -6,6 +6,7 @@ import { cohortIdSchema } from "../../../packages/core/hunter-cohort-schema";
 import { hash } from "../../../packages/integrations/adjusted-series";
 import { cohortObservations,comparativeCohortReport } from "./hunter-cohort-report";
 import { notebookInsights,notebookPattern,notebookEvidenceId } from "./kabumaru-notebook-insights";
+import { saveNotebookMemory,syncNotebookMemory,recallNotebookMemory } from "./kabumaru-notebook-memory";
 export const notebookBase=(id:string)=>`research/notebooks/${cohortIdSchema.parse(id)}`;
 export function notebookIdentity(note:NotebookOriginal){const {notebookId,...body}=notebookOriginalSchema.parse(note);void notebookId;return hash(body);}
 export async function readNotebook(service:Service,id:string){
@@ -28,6 +29,10 @@ export async function createNotebook(service:Service,raw:unknown,now=new Date())
   return service.store.lock(async()=>{const key=`${notebookBase(note.notebookId)}/original.json`;if(await service.store.read(key,null))return readNotebook(service,note.notebookId);await service.store.write(key,note,true);await service.store.write(`${notebookBase(note.notebookId)}/summary.json`,notebookInsights(note));return note;});
 }
 export function registerKabumaruNotebook(app:FastifyInstance,service:Service){
+  app.post("/api/research/notebook/recall",async req=>recallNotebookMemory(service,req.body));
+  app.post("/api/research/notebook/:id/memory",async req=>{const {id}=z.object({id:cohortIdSchema}).parse(req.params);return saveNotebookMemory(service,id);});
+  app.post("/api/research/notebook/:id/sync",async req=>{const {id}=z.object({id:cohortIdSchema}).parse(req.params),body=z.object({confirmExternal:z.boolean()}).strict().parse(req.body);return syncNotebookMemory(service,id,body.confirmExternal);});
+  app.post("/api/research/notebook/:id/summary",async req=>{const {id}=z.object({id:cohortIdSchema}).parse(req.params),original=await readNotebook(service,id),summary=notebookInsights(original);await service.store.lock(()=>service.store.write(`${notebookBase(id)}/summary.json`,summary));return summary;});
   app.post("/api/research/notebook",async req=>createNotebook(service,req.body));
   app.get("/api/research/notebook",async req=>{const q=z.object({page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(20)}).parse(req.query),files=(await service.store.files("research/notebooks")).filter(f=>f.endsWith("/original.json")).reverse();const records=await Promise.all(files.slice((q.page-1)*q.pageSize,q.page*q.pageSize).map(async f=>{const n=notebookOriginalSchema.parse(await service.store.read(f));return {notebookId:n.notebookId,theme:n.theme,period:n.period,createdAt:n.createdAt,mode:n.mode};}));return {records,total:files.length,...q};});
   app.get("/api/research/notebook/:id",async req=>{const {id}=z.object({id:cohortIdSchema}).parse(req.params);const original=await readNotebook(service,id);return {original,summary:notebookInsights(original)};});
