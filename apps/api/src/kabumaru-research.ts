@@ -1,3 +1,4 @@
+import { explainWithResearchLlm } from "./kabumaru-llm";
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import type { Service } from "./service";
@@ -133,11 +134,15 @@ export async function buildKabumaruResearch(service: Service, raw: unknown, now 
   return result;
 }
 
+export async function runKabumaruResearch(service: Service, raw: unknown) {
+  return explainWithResearchLlm(await buildKabumaruResearch(service, raw), raw);
+}
+
 export function registerKabumaruResearch(app: FastifyInstance, service: Service) {
-  app.post("/api/research", async req => buildKabumaruResearch(service, req.body));
+  app.post("/api/research", async req => runKabumaruResearch(service, req.body));
   app.post("/api/research/chat", async req => {
     const body = z.object({ research: researchInputSchema, saveHistory: z.boolean().default(false) }).strict().parse(req.body);
-    const result = await buildKabumaruResearch(service, body.research);
+    const result = await runKabumaruResearch(service, body.research);
     if (body.saveHistory) await service.store.lock(() => service.store.write(`research/chats/${hash([result.researchId, result.question, result.generatedAt])}.json`, result));
     return result;
   });

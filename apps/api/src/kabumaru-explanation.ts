@@ -13,6 +13,7 @@ const risks: Record<string, string> = {
   topix_unknown: "市場全体との比較は未確認", news_earnings_unchecked: "ニュース・決算は未確認", delayed_data: "契約による遅延データ",
   far_from_support: "直近安値から離れている", stale_data: "価格更新が遅れている", volume_ratio_unknown: "出来高倍率は不明",
 };
+const dnaLabels = new Set(["価格形状", "騰落率", "ローソク足", "出来高", "変動率"]);
 const pct = (v: number | null) => v === null ? "確認できません" : `${(v*100).toFixed(2)}%`;
 export function deterministicResearch(evidence: ResearchEvidence[]): ResearchExplanation {
   if (evidence.some(e => !verifyEvidence(e))) throw Error("Evidence IDが内容と一致しません");
@@ -33,7 +34,7 @@ export function deterministicResearch(evidence: ResearchEvidence[]): ResearchExp
   const dejavu = evidence.find(e => e.kind === "dejavu");
   if (dejavu?.kind === "dejavu") {
     for (const c of dejavu.facts.comparisons) add("dejavu", `上位${c.requestedCount}件の設定で、${c.horizon}営業日後の実際の標本は${c.sampleCount}件。中央値${pct(c.medianReturn)}、上昇割合${pct(c.upRatio)}、分位点${c.percentileRange?.map(pct).join("〜") ?? "確認できません"}です。上昇割合は未校正の過去分布です。`, [dejavu.evidenceId]);
-    for (const e of dejavu.facts.examples) add("dejavu", `表示事例の類似度${e.similarity.toFixed(2)}。最も近い要素は${e.common ?? "未確認"}、異なる要素は${e.different ?? "未確認"}です。類似は将来の一致を保証しません。`, [dejavu.evidenceId]);
+    for (const e of dejavu.facts.examples) add("dejavu", `表示事例の類似度${e.similarity.toFixed(2)}。最も近い要素は${e.common && dnaLabels.has(e.common) ? e.common : "未確認"}、異なる要素は${e.different && dnaLabels.has(e.different) ? e.different : "未確認"}です。類似は将来の一致を保証しません。`, [dejavu.evidenceId]);
   } else add("dejavu", "非重複の類似事例は確認できません。履歴や取得時点を確認してください。");
   const evaluations = evidence.filter(e => e.kind === "evaluation");
   for (const e of evaluations) {
@@ -70,7 +71,7 @@ export function validateResearchExplanation(raw: unknown, catalog: ResearchExpla
   const parsed = researchExplanationSchema.parse(raw), known = new Map(catalog.statements.map(s => [s.statementId,s]));
   if (new Set(parsed.statements.map(s => s.statementId)).size !== parsed.statements.length || parsed.statements.some(s => JSON.stringify(s) !== JSON.stringify(known.get(s.statementId))))
     throw Error("未検証の説明・数値・根拠ID");
-  for (const section of ["summary", "uncertainty"] as const)
+  for (const section of ["summary", "bearish", "reflection", "uncertainty"] as const)
     if (catalog.statements.filter(s => s.section === section).some(s => !parsed.statements.some(p => p.statementId === s.statementId))) throw Error("必須の説明・注意事項がありません");
   return parsed;
 }
