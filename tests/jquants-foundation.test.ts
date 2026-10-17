@@ -24,6 +24,17 @@ import {
   readDerivedSeries,
 } from "../packages/integrations/market-ingestion";
 const gate = { wait: async () => {}, deferUntil: async () => {} };
+it("日次ローカル予算はプロセス間で共有し、翌日再開し、Retry-Afterでも件数を消さない",async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),"jq-daily-")); let now=Date.parse("2026-10-17T00:00:00.000Z");
+  vi.stubEnv("JQUANTS_REQUESTS_PER_DAY","1");
+  try {
+    const a=new JQuantsLimiter("fixture",root,"Light",48,()=>now,async()=>{}),b=new JQuantsLimiter("fixture",root,"Light",48,()=>now,async()=>{});
+    await a.wait();await a.deferUntil(now+60000);
+    await expect(b.wait()).rejects.toBeInstanceOf(RequestDeferred);
+    now=Date.parse("2026-10-17T15:00:00.000Z");await b.wait();
+    await expect(a.wait()).rejects.toBeInstanceOf(RequestDeferred);
+  } finally {vi.unstubAllEnvs();await rm(root,{recursive:true,force:true});}
+});
 it("Retry-Afterのない429は1分待機し、制限継続時は再開可能な待機にする", async () => {
   const started = Date.now();
   const limiter = { wait: vi.fn(async () => {}), deferUntil: vi.fn<(time: number) => Promise<void>>().mockResolvedValue(undefined) };

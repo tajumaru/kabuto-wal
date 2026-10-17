@@ -88,6 +88,7 @@ export class HunterJobs {
       if (job.cancelRequested) return null;
       job.lease = { token, pid: process.pid, expiresAt: this.now().getTime() + 1800000 };
       job.status = "running"; job.updatedAt = this.now().toISOString();
+      job.error = undefined; job.retryAt = undefined; job.failureStage = undefined;
       await this.service.store.write(jobKey(id), job);
       await this.service.store.write(`${base}/indexes/active.json`, { id, lease: job.lease });
       return job;
@@ -110,6 +111,7 @@ export class HunterJobs {
     if (this.running.has(id)) throw Error("ジョブは実行中です");
     this.running.add(id);
     let job: HunterJob | null = null;
+    let stage: "acquisition" | "analysis" = "analysis";
     try {
       job = await this.acquire(id); if (!job) return await this.get(id);
       if (job.mode !== (this.service.mode === "demo" ? "demo" : "research")) throw Error("ジョブのデータ区分が一致しません");
@@ -120,10 +122,12 @@ export class HunterJobs {
         return (await this.get(id)).cancelRequested;
       };
       if (job.input.kind !== "scan") {
+        stage = "acquisition";
         await this.acquireMarket(job, cancelled);
         // A new acquisition's data did not exist at job start. Freeze after acquisition.
         if (!job.universeId && !job.input.cutoff) job = await this.patch(id, token, { cutoff: this.now().toISOString() });
       }
+      stage = "analysis";
       const cal = await this.service.store.read<Calendar>("market/calendar.json", []);
       const universe = job.universeId ? await this.service.store.read<HunterUniverse>(`${base}/universe/${job.universeId}.json`) : await buildHunterUniverse(this.service, job.input.asOf, job.cutoff);
       if (this.service.mode !== "demo" && universe.inputId === "no-known-master") throw Error("締切以前に取得した基準日のマスターがありません");
@@ -181,7 +185,7 @@ export class HunterJobs {
     } catch (error) {
       if (job?.lease) {
         const current = await this.get(id);
-        if (current.lease?.token === job.lease.token) await this.patch(id, job.lease.token, { status: current.cancelRequested ? "cancelled" : error instanceof RequestDeferred ? "paused" : "failed", error: error instanceof Error ? error.message : "走査に失敗しました", lease: undefined });
+        if (current.lease?.token === job.lease.token) await this.patch(id, job.lease.token, { status: current.cancelRequested ? "cancelled" : error instanceof RequestDeferred ? "paused" : "failed", error: error instanceof Error ? error.message : "走査に失敗しました", failureStage: stage, retryAt: error instanceof RequestDeferred ? error.retryAt : undefined, lease: undefined });
       }
       throw error;
     } finally { this.running.delete(id); }

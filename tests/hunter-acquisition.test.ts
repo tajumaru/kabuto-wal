@@ -5,6 +5,7 @@ import path from "node:path";
 import { Service } from "../apps/api/src/service";
 import { JQuants } from "../packages/integrations/jquants";
 import { HunterJobs } from "../apps/api/src/hunter-jobs";
+import { RequestDeferred } from "../packages/integrations/jquants-limiter";
 
 it("取得失敗のcheckpointを保持して再開し、別ジョブの同時取得を抑止", async () => {
   vi.stubEnv("JQUANTS_PLAN", "Light");
@@ -24,6 +25,12 @@ it("取得失敗のcheckpointを保持して再開し、別ジョブの同時取
     expect((await engine.get(job.id)).status).toBe("completed");
     expect((await engine.get(job.id)).acquisition).toEqual({ completed: 1, total: 1, date });
     expect(page).toHaveBeenCalledTimes(2);
+    const deferred=await engine.create({kind:"update",asOf:date,from:date,confirmExternal:true});
+    vi.spyOn(provider,"calendar").mockRejectedValueOnce(new RequestDeferred("2026-10-18T00:00:00.000Z"));
+    await expect(engine.run(deferred.id)).rejects.toBeInstanceOf(RequestDeferred);
+    expect(await engine.get(deferred.id)).toMatchObject({status:"paused",failureStage:"acquisition",retryAt:"2026-10-18T00:00:00.000Z"});
+    await engine.resume(deferred.id); await engine.run(deferred.id);
+    expect(await engine.get(deferred.id)).toMatchObject({status:"completed"});
     let release!: () => void, entered!: () => void;
     const gate = new Promise<void>(r => { release = r; }), ready = new Promise<void>(r => { entered = r; });
     vi.spyOn(provider, "calendar").mockImplementationOnce(async () => { entered(); await gate; return [{ date, open: true }]; });

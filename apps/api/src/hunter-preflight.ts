@@ -13,10 +13,10 @@ export async function hunterPreflight(service: Service, raw: unknown, now = new 
   const configured = process.env.JQUANTS_REQUESTS_PER_MINUTE;
   const rpm = configured ? Number(configured) : capabilities.requestsPerMinute;
   const validRpm = Number.isInteger(rpm) && rpm >= 1 && rpm <= capabilities.limit;
-  if (!demo && !validRpm) errors.push(`取得速度の設定を1〜${capabilities.limit}回/分にしてください。`);
+  if (!demo && input.kind !== "scan" && !validRpm) errors.push(`取得速度の設定を1〜${capabilities.limit}回/分にしてください。`);
   const today = now.toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
   const window = dataWindow(plan, today);
-  if (!demo && (input.asOf < window.from || input.asOf > window.to || (input.from && input.from < window.from)))
+  if (!demo && input.kind !== "scan" && (input.asOf < window.from || input.asOf > window.to || (input.from && input.from < window.from)))
     errors.push(`${plan}の取得可能期間は${window.from}〜${window.to}です。`);
   if (!demo && input.kind !== "scan" && !process.env.JQUANTS_API_KEY) errors.push("J-QuantsのAPIキーが未設定です。");
   const calendar = await service.store.read<Calendar>("market/calendar.json", []);
@@ -39,8 +39,11 @@ export async function hunterPreflight(service: Service, raw: unknown, now = new 
   const key = process.env.JQUANTS_API_KEY;
   if (external && key) {
     const id = createHash("sha256").update(key).digest("hex");
-    const budget = await service.store.read<{ nextAllowedAt: number } | null>(`market/request-budgets/${id}/state.json`, null);
+    const budget = await service.store.read<{ nextAllowedAt: number; day?:string; requests?:number } | null>(`market/request-budgets/${id}/state.json`, null);
     waitSeconds = Math.max(0, Math.ceil(((budget?.nextAllowedAt ?? 0) - now.getTime()) / 1000));
+    const daily = process.env.JQUANTS_REQUESTS_PER_DAY ? Number(process.env.JQUANTS_REQUESTS_PER_DAY) : undefined;
+    if (daily !== undefined && (!Number.isSafeInteger(daily) || daily < 1)) errors.push("日次取得予算は正の整数で指定してください。");
+    if (daily !== undefined && budget?.day === today && (budget.requests ?? 0) >= daily) { waitSeconds=Math.max(waitSeconds,Math.ceil((Date.parse(`${today}T15:00:00.000Z`)-now.getTime())/1000)); warnings.push("ローカルの日次取得予算に達しました。次の日本時間の日付で再開できます。"); }
   }
   if (external) warnings.push("API回数・時間は下限の目安です。ページ分割、再試行、未取得の営業日情報で増えます。契約状態や他のアプリの消費量は確認できません。");
   return hunterPreflightSchema.parse({ plan: demo ? "fixture" : plan, windowFrom: window.from, windowTo: window.to,

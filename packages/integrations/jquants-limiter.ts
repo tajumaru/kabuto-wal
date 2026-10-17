@@ -35,12 +35,18 @@ export class JQuantsLimiter implements RequestGate {
     for (;;) {
       const wait = await this.budget.lock(async () => {
         const state = await this.budget.read("state.json", {
-          nextAllowedAt: 0,
+          nextAllowedAt: 0, day: "", requests: 0,
         });
+        const day = new Date(this.clock()).toLocaleDateString("sv-SE",{timeZone:"Asia/Tokyo"});
+        const requests = state.day === day ? (state.requests ?? 0) : 0;
+        const configured = process.env.JQUANTS_REQUESTS_PER_DAY;
+        const daily = configured ? Number(configured) : undefined;
+        if (daily !== undefined && (!Number.isSafeInteger(daily) || daily < 1)) throw Error("日次取得予算は正の整数で指定してください");
+        if (daily !== undefined && requests >= daily) throw new RequestDeferred(new Date(Date.parse(`${day}T15:00:00.000Z`)).toISOString());
         const delay = Math.max(0, state.nextAllowedAt - this.clock());
         if (!delay)
           await this.budget.write("state.json", {
-            nextAllowedAt: this.clock() + this.interval,
+            ...state, nextAllowedAt: this.clock() + this.interval, day, requests: requests + 1,
           });
         return delay;
       });
@@ -54,6 +60,7 @@ export class JQuantsLimiter implements RequestGate {
     await this.budget.lock(async () => {
       const old = await this.budget.read("state.json", { nextAllowedAt: 0 });
       await this.budget.write("state.json", {
+        ...old,
         nextAllowedAt: Math.max(old.nextAllowedAt, time),
       });
     });
