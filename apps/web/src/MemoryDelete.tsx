@@ -102,6 +102,16 @@ function DirectDeleteForm({ memory, stocks, onDone, onClose, config }: Props & {
   const [busy, setBusy] = useState(false), [confirmed, setConfirmed] = useState(false), [message, setMessage] = useState("");
   const [plan, setPlan] = useState<any>(original);
   const [showReset, setShowReset] = useState(false);
+  const [indexState, setIndexState] = useState<"checking" | "present" | "absent" | "error">("checking");
+  const [indexCheck, setIndexCheck] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setIndexState("checking");
+    void request("memory-reset/availability", { memoryId: memory.recordId })
+      .then(result => { if (active) { setIndexState(result.available ? "present" : "absent"); if (!result.available) setShowReset(false); } })
+      .catch(() => { if (active) setIndexState("error"); });
+    return () => { active = false; };
+  }, [memory.recordId, memory.sync, indexCheck]);
   const blobDeleted = isBlobDeleted(memory) || state === "completed";
   const matches = !!account && account.address.toLowerCase() === config.owner?.toLowerCase();
   const endpoint = `memories/${memory.recordId}/blob-delete/`;
@@ -126,12 +136,12 @@ function DirectDeleteForm({ memory, stocks, onDone, onClose, config }: Props & {
     <DeleteHeading deleted={blobDeleted} />
     <MemoryDeletePreview memory={memory} stocks={stocks} />
     {!blobDeleted && <p><strong>保存データを消す：</strong>Walrusに保存したこの記憶を削除します。元に戻せません。実行にはウォレットでの承認と、SUIの手数料が必要です。</p>}
-    <p><strong>検索に出ないようにする：</strong>保存データを消しても、MemWalの検索結果に残ることがあります。検索からも消したい場合は、下の「保存区分の検索索引削除」を使ってください。</p>
+    {indexState === "present" && <p><strong>検索に出ないようにする：</strong>この保存区分にはMemWalの検索索引があります。検索からも消したい場合は、下の「保存区分の検索索引削除」を使ってください。</p>}
     <p>どちらを実行しても、このアプリ内の記録は残ります。</p>
     <details><summary>削除できる範囲について</summary><p>取得済みのコピーやキャッシュは、これらの操作では消去を保証できません。</p></details>
     <ConnectButton />
     {!matches && <p>このアプリの所有者ウォレットを接続してください。</p>}
-    {blobDeleted ? <p role="status">Walrusのblob削除済みです。検索索引の状態は下の操作で別に確認してください。</p> : <>
+    {blobDeleted ? <p role="status">Walrusのblob削除済みです。</p> : <>
       <label><input type="checkbox" checked={confirmed} disabled={busy} onChange={e => setConfirmed(e.target.checked)} />内容を確認し、このblobを削除します</label>
       {!["awaiting_signature", "executing"].includes(state) && <button disabled={busy || !matches || !confirmed} onClick={() => void run("prepare")}>対象blobと削除取引を確認</button>}
       {["awaiting_signature", "executing"].includes(state) && plan?.txBytes && <>
@@ -145,10 +155,13 @@ function DirectDeleteForm({ memory, stocks, onDone, onClose, config }: Props & {
     {(plan?.digest || original?.digest) && <button className="delete-primary" disabled={busy} onClick={() => void run("status")}>削除結果を確認</button>}
     <p role="status">{busy ? "処理中・ウォレット承認待ち…" : message}</p>
     <div className="delete-footer">
-    <button aria-expanded={showReset} disabled={busy} onClick={() => setShowReset(!showReset)}>保存区分の検索索引削除を{showReset ? "閉じる" : "開く"}</button>
+    {indexState === "present" && <button aria-expanded={showReset} disabled={busy} onClick={() => setShowReset(!showReset)}>保存区分の検索索引削除を{showReset ? "閉じる" : "開く"}</button>}
+    {indexState === "checking" && <span role="status">MemWalの検索索引を確認中…</span>}
+    {indexState === "absent" && <span role="status">この保存区分の検索索引はありません。</span>}
+    {indexState === "error" && <span role="status">検索索引の有無を確認できませんでした。<button disabled={busy} onClick={() => setIndexCheck(n => n + 1)}>再確認</button></span>}
     <button className="delete-close" disabled={busy} onClick={onClose}>閉じる</button>
     </div>
-    {showReset && <MemoryReset authenticated={matches} memoryId={memory.recordId} />}
+    {showReset && indexState === "present" && <MemoryReset authenticated={matches} memoryId={memory.recordId} onCompleted={() => setIndexCheck(n => n + 1)} />}
   </section>;
 }
 export default function MemoryDelete(props: Props) {

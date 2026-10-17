@@ -8,7 +8,7 @@ async function request(action: string, body: unknown): Promise<Plan> {
   if (!response.ok) throw Error(data.error || "検索リセットを完了できませんでした。");
   return data;
 }
-export function MemoryReset({ authenticated, memoryId }: { authenticated: boolean; memoryId?: string }) {
+export function MemoryReset({ authenticated, memoryId, onCompleted }: { authenticated: boolean; memoryId?: string; onCompleted?: () => void }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [plan, setPlan] = useState<Plan | null>(null), [confirmation, setConfirmation] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const queryClient = useQueryClient();
@@ -19,6 +19,7 @@ export function MemoryReset({ authenticated, memoryId }: { authenticated: boolea
       if (!execute) setSelected(result.namespaces.filter(ns => ns.state !== "completed" && (memoryId || result.recovery)).map(ns => ns.name));
       setPlan(result); setConfirmation("");
       if (execute) void queryClient.invalidateQueries({ queryKey: ["/memories"] });
+      if (execute && result.state === "completed") onCompleted?.();
     } catch (e) {
       setError(execute ? `${(e as Error).message} 完了したか不明な場合は「対象を確認」で現在の件数を確認してください。` : (e as Error).message);
       if (execute) setPlan(null);

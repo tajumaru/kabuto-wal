@@ -30,12 +30,19 @@ export function registerMemoryReset(app: FastifyInstance, service: Service, fact
       if ([plan.id, ...(plan.previousPlanIds || [])].includes(sync.searchResetPlanId) && sync.searchResetNamespace === namespace) await service.store.write(key, { ...sync, searchResetState: state });
     }
   }
+  app.post("/api/memory-reset/availability", async (req) => {
+    const { memoryId } = z.object({ memoryId: z.string().regex(/^[a-zA-Z0-9_-]+$/) }).strict().parse(req.body);
+    const namespace = await memoryNamespace(memoryId);
+    const remote = client();
+    await remote.identity();
+    const namespaces = await remote.namespaces();
+    return { available: namespaces.some(ns => ns.name === namespace && ns.memory_count > 0) };
+  });
   app.post("/api/memory-reset/preview", async (req) => service.store.lock(async () => {
     const { memoryId } = z.object({ memoryId: z.string().regex(/^[a-zA-Z0-9_-]+$/).optional() }).strict().parse(req.body);
     const targetNamespace = memoryId ? await memoryNamespace(memoryId) : undefined;
     const remote = client();
     await remote.identity();
-    await checkJobs();
     const namespaces = (await remote.namespaces()).filter(ns => !memoryId || ns.name === targetNamespace);
     const previous: Plan | null = await service.store.read(planKey, null);
     // Reconcile interrupted work before allowing a new plan to overwrite its receipt.

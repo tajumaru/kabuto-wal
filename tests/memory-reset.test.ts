@@ -68,6 +68,19 @@ async function fixture() {
   return { app, service, remote, preview, execute };
 }
 
+it("索引の有無は対象区分の実件数で確認し、同期中でも削除計画を作らない", async () => {
+  const f = await fixture();
+  await f.service.store.write("sync/existing.json", { status: "uncertain" });
+  const availability = () => f.app.inject({ method: "POST", url: "/api/memory-reset/availability", payload: { memoryId: "existing" } });
+  expect((await availability()).json()).toEqual({ available: true });
+  f.remote.namespaces.mockResolvedValue([{ name: "kabutowal:v1:profile", memory_count: 0 }, { name: "other-app", memory_count: 3 }]);
+  expect((await availability()).json()).toEqual({ available: false });
+  f.remote.namespaces.mockRejectedValue(Error("offline"));
+  expect((await availability()).statusCode).toBe(400);
+  expect(await f.service.store.read("settings/memwal-search-reset.json", null)).toBeNull();
+  expect(f.remote.forget).not.toHaveBeenCalled();
+});
+
 it("確認済みの全区分だけリセットし、既存記録の再送を止めて新しい記録は同期できる", async () => {
   const f = await fixture(), plan = (await f.preview()).json();
   expect(f.remote.forget).not.toHaveBeenCalled();
@@ -165,10 +178,24 @@ it("確認後に対象が変わった場合、未確認の区分をリセット�
   expect(f.remote.forget).not.toHaveBeenCalled();
 });
 
-it("保存中や結果不明のジョブがある場合とデモではリセットしない", async () => {
+it("保存中や結果不明でも対象と件数を確認でき、実行は拒否する", async () => {
   const f = await fixture();
-  await f.service.store.write("sync/existing.json", { status: "accepted", jobId: "inflight" });
-  expect((await f.preview()).json().error).toContain("送信中");
+  for (const status of ["accepted", "submitting", "uncertain"]) {
+    await f.service.store.write("sync/existing.json", { status, jobId: "inflight" });
+    const preview = await f.app.inject({ method: "POST", url: "/api/memory-reset/preview", payload: { memoryId: "existing" } });
+    expect(preview.statusCode).toBe(200);
+    const plan = preview.json();
+    expect(plan.namespaces).toEqual([{ name: "kabutowal:v1:profile", memory_count: 2, state: "pending" }]);
+    const result = await f.app.inject({ method: "POST", url: "/api/memory-reset/execute", payload: { planId: plan.id, confirmation: "検索リセット", namespaces: ["kabutowal:v1:profile"] } });
+    expect(result.statusCode).toBe(400);
+    expect(result.json().error).toContain("送信中");
+    expect((await f.service.store.read("sync/existing.json")).searchResetAt).toBeUndefined();
+  }
+  expect(f.remote.forget).not.toHaveBeenCalled();
+});
+
+it("デモでは対象確認もリセットもしない", async () => {
+  const f = await fixture();
   f.service.mode = "demo";
   expect((await f.preview()).json().error).toContain("デモ");
   expect(f.remote.forget).not.toHaveBeenCalled();
