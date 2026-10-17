@@ -11,7 +11,7 @@ import { RESEARCH_METHOD, researchInputSchema, researchResultSchema, type Resear
 import { researchEvidence, verifyEvidence } from "./kabumaru-evidence";
 import { deterministicResearch, researchReliability } from "./kabumaru-explanation";
 import { hash } from "../../../packages/integrations/adjusted-series";
-import { cachedResearch, cacheResearch } from "./kabumaru-research-cache";
+import { cachedResearch, cacheResearch, singleResearch } from "./kabumaru-research-cache";
 import { searchDejavuContext } from "./hunter-research";
 import { researchRecords } from "./kabumaru-record-index";
 
@@ -23,7 +23,11 @@ const memorySchema = z.object({ recordId: z.string().regex(/^[A-Za-z0-9_-]+$/), 
   predictionId: z.string().optional(), researchId: z.string().optional(), references: z.object({ evaluationId: z.string().optional() }).passthrough().optional(),
   observations: z.object({ classification: z.string().optional(), risks: z.array(z.string()).optional() }).passthrough().optional(), namespace: z.string(),
 });
-export async function buildKabumaruResearch(service: Service, raw: unknown, now = new Date()): Promise<ResearchResult> {
+export async function buildKabumaruResearch(service: Service, raw: unknown, now?: Date): Promise<ResearchResult> {
+  const input = researchInputSchema.parse(raw);
+  return singleResearch(service, hash([input,now?.toISOString() ?? "current"]), () => buildResearch(service,input,now ?? new Date()));
+}
+async function buildResearch(service: Service, raw: unknown, now: Date): Promise<ResearchResult> {
   const input = researchInputSchema.parse(raw);
   const jobId = await hunterJobFor(service, input);
   const job = jobId ? hunterJobSchema.parse(await service.store.read(`market/hunter/jobs/${jobId}.json`)) : null;
@@ -42,10 +46,10 @@ export async function buildKabumaruResearch(service: Service, raw: unknown, now 
   const records = indexed.records.filter(p => p.providerCode === input.code && ((p.methodVersion === HUNTER_FORECAST_METHOD && p.hunter && !p.dejavu) || (p.methodVersion === "dejavu-consensus-v1" && p.dejavu && !p.hunter)) &&
     (service.mode === "demo" ? p.mode === "demo" : p.mode !== "demo") && p.dataAsOf <= asOf && knownBy(p.generatedAt, cutoff) && knownBy(p.createdAt, cutoff) && knownBy(p.hunter?.recordedAt ?? p.createdAt, cutoff) && knownBy(p.hunter?.cutoff ?? p.dejavu?.dataCutoff, cutoff));
   const local = indexed.memories;
-  const cacheKey = hash(["research-cache-v2", indexed.generation, RESEARCH_METHOD, service.mode, input.code, asOf, cutoff, job, detail, coverage, records, input.question]);
+  const cacheKey = hash(["research-cache-v3", indexed.generation, RESEARCH_METHOD, service.mode, input.code, asOf, cutoff, job, detail, coverage, records]);
   if (!input.recallRemote) {
     const cached = await cachedResearch(service, cacheKey);
-    if (cached && cached.generatedAt <= now.toISOString()) return cached;
+    if (cached && cached.generatedAt <= now.toISOString()) return { ...cached, question: input.question };
   }
   if (indexed.total > 20) warnings.push(`表示・説明対象は、この時点で確認できる関連予測${indexed.total}件のうち直近20件です。全件集計ではありません。`);
   warnings.push("関連記憶の読み込みは銘柄別の直近100件、採用は最大20件です。全記憶の集計ではありません。");
