@@ -37,6 +37,7 @@ import { Kabumaru } from "./Kabumaru";
 const DejavuResearch = lazy(() => import("./DejavuResearch").then(m => ({ default: m.DejavuResearch })));
 const BottomResearch = lazy(() => import("./BottomResearch").then(m => ({ default: m.BottomResearch })));
 const KabumaruResearch = lazy(() => import("./KabumaruResearch").then(m => ({ default: m.KabumaruResearch })));
+const KabumaruNotebook = lazy(() => import("./KabumaruNotebook").then(m => ({ default: m.KabumaruNotebook })));
 const BottomHunter = lazy(() => import("./BottomHunter").then(m => ({ default: m.BottomHunter })));
 import { DailyFetch } from "./DailyFetch";
 import { MemoryContent, memoryKindLabel, memorySyncLabel } from "./MemoryContent";
@@ -105,6 +106,7 @@ function Chart({
           <Tooltip />
           <Area
             dataKey={field}
+            name={field === "adjClose" ? "調整済み終値" : field === "volume" ? "出来高" : "価格"}
             stroke={chartColor}
             fill={`url(#${gradientId})`}
             strokeWidth={2}
@@ -276,6 +278,7 @@ function App() {
             <Route path="/bottom" element={<BottomResearch request={api} />} />
             <Route path="/bottom/hunter" element={<BottomHunter request={api} />} />
             <Route path="/research" element={<KabumaruResearch request={api} />} />
+            <Route path="/research/notebook" element={<KabumaruNotebook request={api} />} />
             <Route path="/predictions" element={<Predictions />} />
             <Route path="/memories" element={<Memories />} />
             <Route path="/settings" element={<Settings />} />
@@ -460,7 +463,7 @@ function Stock() {
         <div className="volume">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data.slice(-period)}>
-              <Bar dataKey="volume" fill="#94c7e5" />
+              <Bar dataKey="volume" name="出来高" fill="#94c7e5" />
               <Tooltip />
             </BarChart>
           </ResponsiveContainer>
