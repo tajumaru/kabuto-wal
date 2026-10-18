@@ -1,0 +1,2 @@
+export function canonicalAgentValue(value:unknown):unknown{if(Array.isArray(value))return value.map(canonicalAgentValue);if(value&&typeof value==="object")return Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,canonicalAgentValue(v)]));return value;}
+export async function browserAgentHash(value:unknown){const bytes=new TextEncoder().encode(JSON.stringify(canonicalAgentValue(value))),digest=await globalThis.crypto.subtle.digest("SHA-256",bytes);return [...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,"0")).join("");}

@@ -163,7 +163,7 @@ export function KabumaruLab({ request }: { request: Request }) {
         </div>
       </header>
       <p>
-        <Link to="/research/notebook">研究ノート</Link> ·{" "}
+        <Link to="/research/agent">自律研究エージェント</Link> · <Link to="/research/notebook">研究ノート</Link> ·{" "}
         <Link to="/bottom/hunter">底打ちハンター</Link>
       </p>
       <section className="card">

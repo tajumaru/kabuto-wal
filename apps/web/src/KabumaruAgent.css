@@ -1,0 +1,87 @@
+.agent-page {
+  max-width: 1100px;
+  margin: auto;
+  padding: 12px max(12px, env(safe-area-inset-right))
+    max(28px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  overflow-wrap: anywhere;
+  scroll-padding-bottom: 100px;
+}
+.agent-page .card {
+  margin-bottom: 16px;
+  min-width: 0;
+}
+.agent-page button,
+.agent-page input,
+.agent-page select,
+.agent-page summary {
+  min-height: 44px;
+  font-size: 16px;
+}
+.agent-page button {
+  margin: 6px 8px 6px 0;
+  white-space: normal;
+}
+.agent-page label {
+  display: block;
+  margin: 12px 0;
+}
+.agent-page input:not([type="checkbox"]),
+.agent-page textarea,
+.agent-page select {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.agent-page textarea {
+  min-height: 80px;
+  font-size: 16px;
+  resize: vertical;
+}
+.agent-page .agent-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.agent-check input {
+  width: 24px;
+  flex-shrink: 0;
+}
+.agent-page details {
+  margin: 12px 0;
+}
+.agent-page summary {
+  cursor: pointer;
+  padding: 8px;
+  box-sizing: border-box;
+}
+.agent-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+.agent-header > div {
+  min-width: 0;
+}
+.agent-budget {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.agent-page progress {
+  width: 100%;
+}
+@media (max-width: 389px) {
+  .agent-header {
+    display: block;
+  }
+  .agent-budget {
+    grid-template-columns: 1fr;
+  }
+  .agent-page h1 {
+    font-size: 1.35rem;
+  }
+  .agent-page button {
+    width: 100%;
+    margin-right: 0;
+  }
+}

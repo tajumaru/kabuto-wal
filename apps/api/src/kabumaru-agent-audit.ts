@@ -5,10 +5,10 @@ import { cohortIdSchema } from "../../../packages/core/hunter-cohort-schema";
 import { agentSessionInputSchema,agentSessionSchema,agentPlanSchema,type AgentStatus,type AgentPlan } from "../../../packages/core/kabumaru-agent-schema";
 import { agentEventSchema,agentTransitions,type AgentEvent } from "../../../packages/core/kabumaru-agent-events";
 import { validateAgentDag } from "../../../packages/core/kabumaru-agent-policy";
+import { canonicalAgentValue } from "../../../packages/core/kabumaru-agent-canonical";
 export const AGENT_BASE="research/agent";
 export const agentBase=(id:string)=>`${AGENT_BASE}/sessions/${cohortIdSchema.parse(id)}`;
-function canonical(value:unknown):unknown{if(Array.isArray(value))return value.map(canonical);if(value&&typeof value==="object")return Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,canonical(v)]));return value;}
-export const agentHash=(value:unknown)=>hash(canonical(value));
+export const agentHash=(value:unknown)=>hash(canonicalAgentValue(value));
 export async function readAgentSession(s:Service,id:string){const row=agentSessionSchema.parse(await s.store.read(`${agentBase(id)}/original.json`));if(row.sessionId!==id||row.mode!==(s.mode==="demo"?"demo":"research"))throw Error("研究セッションの区分・識別情報不一致");return row;}
 export async function agentEvents(s:Service,id:string){await readAgentSession(s,id);const files=await s.store.files(`${agentBase(id)}/events`);if(files.length>10000)throw Error("監査イベントの上限です");const rows=(await Promise.all(files.map(async file=>{const e=agentEventSchema.parse(await s.store.read(file));if(file!==`${agentBase(id)}/events/${String(e.sequence).padStart(6,"0")}-${e.eventId}.json`)throw Error("監査イベントのパス不一致");return e;}))).sort((a,b)=>a.sequence-b.sequence);let status:AgentStatus="draft";for(let i=0;i<rows.length;i++){const e=rows[i],{eventId,...body}=e;if(e.sessionId!==id||e.sequence!==i||e.previous!==(rows[i-1]?.eventId??null)||agentHash(body)!==eventId)throw Error("監査履歴の鎖・hashが不整合です");if(e.status){if(i!==0&&!agentTransitions[status].includes(e.status))throw Error("監査履歴の状態遷移が不正です");status=e.status;}}return rows;}
 // Only call while holding the existing Store writer lock.
