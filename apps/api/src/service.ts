@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from "node:crypto";
+import { isStockQuoteQuestion, stockQuote } from "./stock-quote";
 import { predictionEvidence } from "../../../packages/core/chat-evidence";
 import { Store } from "../../../packages/storage/index";
 import { OpenAiLlm } from "../../../packages/integrations/llm";
@@ -500,6 +501,8 @@ export class Service {
     );
   }
   async chat(question: string, code?: string) {
+    const quoteMaster = await this.store.read<{ providerCode: string; name: string }[]>("market/master.json", []);
+    if (isStockQuoteQuestion(question, quoteMaster)) return stockQuote(this, question, code);
     let records = (await this.memories()).filter(
       (m) =>
         m.active &&
