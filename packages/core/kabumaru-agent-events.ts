@@ -1,0 +1,6 @@
+import { z } from "zod";
+import { cohortIdSchema as id } from "./hunter-cohort-schema";
+import { agentStatusSchema } from "./kabumaru-agent-schema";
+export const agentEventSchema=z.object({eventId:id,sessionId:id,sequence:z.number().int().nonnegative(),previous:id.nullable(),kind:z.enum(["status","plan-proposed","approved","attempt-started","step-completed","step-failed","budget","control","recovered"]),status:agentStatusSchema.optional(),planId:id.optional(),stepId:z.string().optional(),createdAt:z.string().datetime(),reason:z.string().max(1500),references:z.array(id).max(100),details:z.record(z.string(),z.union([z.string().max(2000),z.number().finite(),z.boolean(),z.null()])).default({})}).strict();
+export type AgentEvent=z.infer<typeof agentEventSchema>;
+export const agentTransitions:Record<z.infer<typeof agentStatusSchema>,z.infer<typeof agentStatusSchema>[]>= {draft:["awaiting-approval","cancelled"],"awaiting-approval":["awaiting-approval","approved","cancelled"],approved:["running","cancelled"],running:["paused","completed","failed","cancelled"],paused:["running","cancelled","failed"],completed:["awaiting-approval"],failed:["running","awaiting-approval","cancelled"],cancelled:["awaiting-approval"]};
