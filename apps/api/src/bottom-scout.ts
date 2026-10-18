@@ -82,6 +82,7 @@ export async function scoutResearch(
   question: string,
   selectedCode?: string,
   now = new Date(),
+  preferLocal = false,
 ): Promise<ScoutReply> {
   const intent = parseScoutIntent(question, selectedCode);
   if (!intent) throw Error("底打ち探索の質問ではありません");
@@ -136,8 +137,8 @@ export async function scoutResearch(
       1,
       Math.min(200, Math.floor(Number(process.env.SCOUT_MAX_SYMBOLS) || 50)),
     );
+  const jobId = preferLocal ? null : await hunterJobFor(s, date ? { asOf: date } : {});
   let universe = master,
-    jobId = await hunterJobFor(s, date ? { asOf: date } : {}),
     job = jobId
       ? hunterJobSchema.parse(
           await s.store.read(`market/hunter/jobs/${jobId}.json`),
@@ -151,7 +152,6 @@ export async function scoutResearch(
       (date && (job.input.asOf !== date || job.cutoff > `${date}T14:59:59.999Z`)))
   ) {
     job = null;
-    jobId = null;
   }
   if (job?.universeId) {
     const u = hunterUniverseSchema.parse(
@@ -173,7 +173,7 @@ export async function scoutResearch(
     selected = intent.code
       ? sorted.filter((m) => m.providerCode === intent.code)
       : sorted.slice(0, maxSymbols),
-    cutoff = date ? `${date}T14:59:59.999Z` : now.toISOString(),
+    cutoff = date && `${date}T14:59:59.999Z` < now.toISOString() ? `${date}T14:59:59.999Z` : now.toISOString(),
     loaded: {
       code: string;
       name: string;

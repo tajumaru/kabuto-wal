@@ -16,6 +16,7 @@ import { hash } from "../../../packages/integrations/adjusted-series";
 import { snapshot } from "./dejavu";
 import { SCOUT_BASE, readScoutReport } from "./bottom-scout";
 import { SCOUT_METHOD } from "../../../packages/core/bottom-scout-score";
+import { z } from "zod";
 async function currentSeries(s: Service, code: string, now: Date) {
   return (
     (await readDerivedSeries(s.store, code, undefined, now.toISOString()))
@@ -176,11 +177,14 @@ export async function evaluateScout(
         : ["比較対象の価格が未指定・未取得のためベンチマーク差は未評価です。"]),
     ],
   });
-  await s.store.write(
-    `${SCOUT_BASE}/evaluations/${report.reportId}/${hash(review)}/original.json`,
-    review,
-    true,
-  );
+  const evaluationKey = `${SCOUT_BASE}/evaluations/${report.reportId}/${hash(review)}/original.json`;
+  try {
+    await s.store.write(evaluationKey, review, true);
+  } catch (error) {
+    // Identical repeated evaluations reuse their immutable original.
+    const existing = await s.store.read(evaluationKey, null);
+    if (!existing || hash(existing) !== hash(review)) throw error;
+  }
   return review;
 }
 export async function reviewScoutQuestion(
@@ -189,20 +193,16 @@ export async function reviewScoutQuestion(
   date: string,
   now: Date,
 ) {
-  const files = (await s.store.files(`${SCOUT_BASE}/reports`)).filter((f) =>
+  const files = (await s.store.files(`${SCOUT_BASE}/requests/${date}`)).filter((f) =>
     f.endsWith("/original.json"),
   );
   if (files.length > 1000)
     throw Error("振り返りの読込上限です。期間別の記録を整理してください。");
   const reports = [];
   for (const file of files) {
-    const r = await readScoutReport(s, file.split("/").at(-2)!);
-    if (
-      r.asOf === date &&
-      r.createdAt <= `${date}T23:59:59.999Z` &&
-      r.recordingMode === "live"
-    )
-      reports.push(r);
+    const ref=z.object({reportId:z.string().regex(/^[a-f0-9]{64}$/),askedAt:z.string().datetime()}).parse(await s.store.read(file));
+    if(ref.askedAt>now.toISOString()||new Date(ref.askedAt).toLocaleDateString("sv-SE",{timeZone:"Asia/Tokyo"})!==date)continue;
+    const r=await readScoutReport(s,ref.reportId);if(r.createdAt<=ref.askedAt)reports.push(r);
   }
   reports.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const report = reports[0] ?? null,
@@ -224,10 +224,10 @@ export async function reviewScoutQuestion(
     memoryReferences: [],
     notes: report
       ? [
-          "当日に保存された候補を期限後のデータで振り返っています。翌日だけでは5・10・20営業日後の結果は未確定です。",
+          `${date}に質問した記録から、当時返した候補を振り返っています。分析原本の株価基準日は${report.asOf}、記録区分は${report.recordingMode}です。翌日だけでは5・10・20営業日後の結果は未確定です。`,
         ]
       : [
-          `${date}当日に保存された実運用の探索記録がありません。後から計算した過去研究を当時の予測として表示しません。`,
+          `${date}に質問して保存した探索記録がありません。後から計算した候補を、当時返した候補として表示しません。`,
         ],
   });
 }

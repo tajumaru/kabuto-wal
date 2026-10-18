@@ -3,6 +3,8 @@ import type { Service } from "./service";
 import { scoutResearch } from "./bottom-scout";
 import { scoutReplySchema } from "../../../packages/core/bottom-scout-schema";
 import { parseScoutIntent } from "../../../packages/core/bottom-scout-intent";
+import { acquireScoutUpdate } from "./bottom-scout-acquisition";
+import { scoutLocalReferences } from "./bottom-scout-memory";
 // Explicitly narrow: no external LLM, memory provider, signer, or command tools.
 export async function scoutChat(
   s: Service,
@@ -12,11 +14,15 @@ export async function scoutChat(
 ) {
   const parsed = parseScoutIntent(question, code);
   if (!parsed) throw Error("底打ち探索の対象外です");
+  const update=await acquireScoutUpdate(s,parsed,now).catch(()=>({acquired:false,note:"追加取得を完了できませんでした。保存済みデータで調べています。"}));
+  if(update.acquired)now=new Date();
   return s.store.lock(async () => {
     const scout = scoutReplySchema.parse(
-        await scoutResearch(s, question, code, now),
-      ),
-      answer =
+        await scoutResearch(s, question, code, now, update.acquired),
+      );
+    scout.notes.push(update.note);
+    if(scout.reportId)scout.memoryReferences=await scoutLocalReferences(s,scout.reportId);
+    const answer =
         scout.status === "clarification"
           ? scout.notes.join("\n")
           : scout.status === "review"
@@ -63,6 +69,7 @@ export async function scoutChat(
         scout,
       };
     await s.store.write(`chats/local/${recordId}.json`, event, true);
+    if(scout.reportId)await s.store.write(`research/scout/requests/${now.toLocaleDateString("sv-SE",{timeZone:"Asia/Tokyo"})}/${recordId}/original.json`,{reportId:scout.reportId,askedAt:now.toISOString()},true);
     return event;
   });
 }
