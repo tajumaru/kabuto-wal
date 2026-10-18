@@ -7,3 +7,5 @@ playwright-report/
 *.log
 .move-cache/
 move/**/build/
+# Local checkout used for isolated anchor work; keep its files out of this repo.
+/output/anchor-push/
