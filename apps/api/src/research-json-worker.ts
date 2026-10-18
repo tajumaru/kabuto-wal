@@ -71,8 +71,9 @@ export async function runResearchJob(
   key: string,
   unit: (index: number) => Promise<void>,
   maxUnits = Infinity,
+  options: { activeKey?: string } = {},
 ) {
-  const activeKey = "research/lab/active-worker.json",
+  const activeKey = options.activeKey ?? "research/lab/active-worker.json",
     token = randomUUID();
   let job = await s.store.lock(async () => {
     const j = researchCheckpointSchema.parse(await s.store.read(key));
@@ -122,7 +123,7 @@ export async function runResearchJob(
   } catch (e) {
     await s.store.lock(async () => {
       const j = researchCheckpointSchema.parse(await s.store.read(key));
-      if (j.lease?.token === token) {
+      if (j.lease?.token === token && j.status === "running") {
         j.status = "failed";
         j.failed++;
         j.error = e instanceof Error ? e.message : "計算失敗";

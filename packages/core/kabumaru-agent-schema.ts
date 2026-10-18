@@ -18,3 +18,5 @@ export type AgentApproval=z.infer<typeof agentApprovalSchema>;
 export type AgentCheckpoint=z.infer<typeof agentCheckpointSchema>;
 export type AgentTool=z.infer<typeof agentToolSchema>;
 export type AgentStatus=z.infer<typeof agentStatusSchema>;
+export const agentArtifactSchema=z.object({artifactId:id,sessionId:id,planId:id,stepId:z.string(),inputHash:id,tool:agentToolSchema,status:z.enum(["completed","skipped"]),createdAt:z.string().datetime(),durationMs:z.number().finite().nonnegative(),references:z.array(id).max(1000),output:z.record(z.string(),z.unknown())}).strict();
+export type AgentArtifact=z.infer<typeof agentArtifactSchema>;
