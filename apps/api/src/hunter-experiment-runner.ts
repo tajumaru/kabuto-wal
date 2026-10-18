@@ -20,7 +20,6 @@ import { cohortEvaluations } from "./hunter-cohort-evaluation";
 import {
   labBase,
   readLabMethod,
-  readLabPlan,
   labEvents,
 } from "./hunter-experiment";
 import {
@@ -182,7 +181,7 @@ export async function completedLabParts(s: Service, id: string) {
   const j = await readLabRun(s, id);
   if (j.status !== "completed" || j.processed !== j.total)
     throw Error("途中結果は完成レポートとして表示できません");
-  const p = await readLabPlan(s, j.planId),
+  const p = await verifyLabPlanInputs(s, j.planId),
     m = await readLabMethod(s, j.experimentId),
     ids = p.cohortIds.filter((c) => p.partitions[c] === j.stage),
     parts = [];

@@ -81,6 +81,7 @@ export async function createLabPlan(
     purgeReasons: Record<string, string> = {},
     cohortHashes: Record<string, string> = {},
     evaluationIds: string[] = [],
+    evaluationHashes: Record<string, string> = {},
     versions = new Set<string>(),
     sizes = { training: 0, validation: 0, test: 0 };
   const ids = [...new Set(q.cohortIds)].sort();
@@ -109,8 +110,10 @@ export async function createLabPlan(
       throw Error(
         "各区間50,000銘柄時点が上限です。計画の対象期間を分けてください",
       );
-    for (const e of await cohortEvaluations(s, id, now.toISOString()))
+    for (const e of await cohortEvaluations(s, id, now.toISOString())) {
       evaluationIds.push(e.evaluationId);
+      evaluationHashes[e.evaluationId] = hash(e);
+    }
   }
   if (versions.size !== 1)
     throw Error("区分・現行方式・プランが一致するコホートだけを比較できます");
@@ -150,6 +153,7 @@ export async function createLabPlan(
       partitions,
       purgeReasons,
       evaluationIds: [...new Set(evaluationIds)].sort(),
+      evaluationHashes,
       methodVersion: "temporal-lab-v1" as const,
     },
     plan = labPlanSchema.parse({ ...body, planId: "0".repeat(64) });
@@ -175,9 +179,29 @@ export async function createLabPlan(
 }
 export async function verifyLabPlanInputs(s: Service, id: string) {
   const p = await readLabPlan(s, id);
-  for (const c of p.cohortIds)
-    if (hash((await readCohort(s, c)).manifest) !== p.cohortHashes[c])
-      throw Error("固定入力の変更を検出しました");
+  const calendar = await s.store.read<Calendar>("market/calendar.json", []);
+  if (hash(calendar) !== p.calendarHash)
+    throw Error("固定営業日カレンダーの変更を検出しました");
+  const fixedIds = new Set(p.evaluationIds), found = new Set<string>();
+  if (fixedIds.size !== p.evaluationIds.length ||
+      (p.evaluationHashes && (Object.keys(p.evaluationHashes).length !== fixedIds.size || Object.keys(p.evaluationHashes).some(key => !fixedIds.has(key)))))
+    throw Error("固定評価集合が一致しません");
+  for (let offset = 0; offset < p.cohortIds.length; offset += 8) {
+    const batches = await Promise.all(p.cohortIds.slice(offset, offset + 8).map(async c => {
+      if (hash((await readCohort(s, c)).manifest) !== p.cohortHashes[c])
+        throw Error("固定入力の変更を検出しました");
+      return cohortEvaluations(s, c, p.evaluationCutoff);
+    }));
+    // Existing reader verifies schema, semantic ID, file path, cohort and cutoff.
+    // Later additions are not evidence of this plan; missing frozen IDs fail closed.
+    for (const e of batches.flat()) {
+      if (!fixedIds.has(e.evaluationId)) continue;
+      if (found.has(e.evaluationId) || (p.evaluationHashes && p.evaluationHashes[e.evaluationId] !== hash(e)))
+        throw Error("固定評価原本の変更を検出しました");
+      found.add(e.evaluationId);
+    }
+  }
+  if (found.size !== fixedIds.size) throw Error("固定評価原本が欠損またはcutoff外です");
   return p;
 }
 export async function selectLabMethod(

@@ -90,6 +90,7 @@ export const labPlanSchema = labPlanInputSchema
     purgeReasons: z.record(z.string(), z.string()),
     evaluationCutoff: z.string().datetime(),
     evaluationIds: z.array(cohortIdSchema),
+    evaluationHashes: z.record(cohortIdSchema, cohortIdSchema).optional(),
     methodVersion: z.literal("temporal-lab-v1"),
   })
   .strict();

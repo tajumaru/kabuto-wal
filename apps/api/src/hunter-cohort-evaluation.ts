@@ -54,11 +54,14 @@ export async function evaluateCohortMembers(service:Service,manifest:CohortManif
 }
 export async function cohortEvaluations(service:Service,id:string,cutoff=new Date().toISOString()){
   const {manifest,members}=await readCohort(service,id),codes=new Map(members.map(m=>[m.code,m])),rows:CohortEvaluation[]=[];
-  for(const file of await service.store.files(`${cohortBase(id)}/evaluations`)){
-    const row=cohortEvaluationSchema.parse(await service.store.read(file));
+  const files=await service.store.files(`${cohortBase(id)}/evaluations`);
+  for(let offset=0;offset<files.length;offset+=16){
+   const batch=await Promise.all(files.slice(offset,offset+16).map(async file=>({file,row:cohortEvaluationSchema.parse(await service.store.read(file))})));
+   for(const {file,row} of batch){
     if(row.cohortId!==id||!codes.has(row.code)||row.evaluationId!==cohortEvaluationId(row)||file!==`${cohortBase(id)}/evaluations/${row.code}/${row.horizon}/${row.evaluationId}.json`)throw Error("評価原本の照合に失敗しました");
     if((row.target&&row.target!==manifest.targets[String(row.horizon) as "1"|"5"|"20"])||(row.status==="evaluated"&&(!codes.get(row.code)!.eligible||row.target!>new Date(row.evaluationCutoff).toLocaleDateString("sv-SE",{timeZone:"Asia/Tokyo"}))))throw Error("評価の営業日・対象群が一致しません");
     if(row.evaluatedAt<=cutoff&&row.evaluationCutoff<=cutoff&&(!row.dataAvailableAt||row.dataAvailableAt<=row.evaluationCutoff))rows.push(row);
+   }
   }
   return rows;
 }
