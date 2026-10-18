@@ -6,12 +6,16 @@ import os from "node:os";
 import path from "node:path";
 import { demoBars, master } from "../../fixtures/demo";
 import { labFixture } from "../../fixtures/lab";
+import { scoutFixture } from "../../fixtures/bottom-scout";
 const webPort=Number(process.env.E2E_PORT??5517),apiPort=Number(process.env.E2E_API_PORT??3002);
 process.env.APP_ORIGIN = `http://localhost:${webPort}`;
 // A fresh seeded store prevents prior empty/personal settings changing test results.
 const dir = await mkdtemp(path.join(os.tmpdir(), "kabutowal-e2e-"));
 const service = new Service(dir, "demo", false);
 const app = await createApp(service);
+let scoutBackup:{master:unknown;calendar:unknown}|null=null;
+// Fixture-server-only setup; never registered by the production application.
+app.post("/__test__/scout",async req=>{if((req.body as {reset?:boolean})?.reset){if(scoutBackup){await service.store.write("market/master.json",scoutBackup.master);await service.store.write("market/calendar.json",scoutBackup.calendar);scoutBackup=null;}return {ok:true};}scoutBackup={master:await service.store.read("market/master.json"),calendar:await service.store.read("market/calendar.json")};const f=await scoutFixture(service);for(const m of f.master){const bars=await service.history(m.providerCode);await service.store.write(`prices/${m.providerCode}/fixture.json`,bars.slice(0,320));}return {asOf:f.asOf};});
 const existingCalendar=await service.store.read<{date:string;open:boolean}[]>("market/calendar.json");
 await labFixture(service);
 const labCalendar=await service.store.read<{date:string;open:boolean}[]>("market/calendar.json");
@@ -28,11 +32,12 @@ await service.store.write("settings/watchlist.json", {
 });
 await app.listen({ host: "127.0.0.1", port: apiPort });
 const web = await createServer({
+  envDir: false,
   server: {
     host: "127.0.0.1",
     port: webPort,
     strictPort: true,
-    proxy: { "/api": `http://127.0.0.1:${apiPort}` },
+    proxy: { "/api": `http://127.0.0.1:${apiPort}`, "/__test__": `http://127.0.0.1:${apiPort}` },
   },
 });
 await web.listen();
