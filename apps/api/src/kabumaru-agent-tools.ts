@@ -3,7 +3,6 @@ import type { AgentPlan,AgentArtifact } from "../../../packages/core/kabumaru-ag
 import { readNotebook } from "./kabumaru-notebook";
 import { notebookInsights } from "./kabumaru-notebook-insights";
 import { generateLabHypothesis } from "./hunter-experiment-hypotheses";
-import { agentHash } from "./kabumaru-agent-audit";
 export class AgentToolError extends Error{constructor(message:string,public retryable=false){super(message);}}
 export type AgentToolContext={s:Service;plan:AgentPlan;step:AgentPlan["steps"][number];artifacts:AgentArtifact[];guard:()=>Promise<void>;chargeExperiment:(key:string)=>Promise<void>;setChild:(id:string|null)=>Promise<void>;};
 export type AgentToolResult={status:"completed"|"skipped";output:Record<string,unknown>;references:string[]};
@@ -14,5 +13,5 @@ export async function executeAgentTool(c:AgentToolContext):Promise<AgentToolResu
  case "compare-folds":case "run-validation":case "select-final-method":case "run-final-test":return (await import("./kabumaru-agent-walk-forward")).executeAgentExperimentTool(c);
  case "evaluate-research":return (await import("./kabumaru-agent-evaluation")).executeAgentEvaluation(c);
  case "save-local-memory":return (await import("./kabumaru-agent-memory")).executeAgentLocalMemory(c);
- case "local-attestation":return {status:"completed",output:{manifestHash:agentHash([p,c.artifacts.map(a=>a.artifactId)]),sendSupported:false,suiTransactions:0},references:[p.planId]};
+ case "local-attestation":return (await import("./kabumaru-agent-attestation")).executeAgentAttestation(c);
  }}

@@ -4,6 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import { Service } from "../apps/api/src/service";
 import { saveAgentMemory,syncAgentMemory,recallAgentMemory,agentNamespace } from "../apps/api/src/kabumaru-agent-memory";
+import { agentAttestation,verifyAgentAttestation } from "../apps/api/src/kabumaru-agent-attestation";
 import {
   createAgentSession,
   agentHash,
@@ -77,6 +78,7 @@ it("承認済み研究を一段ずつ再開し、累積予算・冪等結果・�
         (e) => e.kind === "step-completed",
       ),
     ).toHaveLength(plan.steps.length);
+    const mainnet=await agentAttestation(s,session.sessionId,"mainnet"),testnet=await agentAttestation(s,session.sessionId,"testnet");expect(mainnet.manifestHash).not.toBe(testnet.manifestHash);expect(mainnet.sendSupported).toBe(false);expect(mainnet.transactionDigest).toBeNull();expect((await verifyAgentAttestation(s,session.sessionId,{network:"testnet",manifestHash:mainnet.manifestHash})).localVerified).toBe(false);expect((await verifyAgentAttestation(s,session.sessionId,{network:"mainnet",manifestHash:mainnet.manifestHash})).localVerified).toBe(true);
     expect(network).not.toHaveBeenCalled();
   } finally {
     network.mockRestore();
