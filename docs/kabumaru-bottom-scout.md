@@ -42,6 +42,8 @@ J-Quants公式確認：[データ範囲](https://jpx-jquants.com/ja/spec/data-sp
 
 lint、typecheck、build、既存を含む単体194件、全E2Eを実行し成功。その後に追加した記憶重複・削除抑止テストと探索APIテストも成功。同じ自然文から5銘柄表示、理由、類似チャート、320px幅、デジャヴ遷移を人工相場のE2Eで検証した。テストは一時JSONのみを使い、Vite/Vitestが実環境.envを読まないよう設定した。
 
+最終再検査：lint/typecheck成功、全単体68ファイル・195件成功。全E2Eのlast-runもpassed・failedTests空を確認。
+
 実J-Quants取得・MemWal送信/検索・Sui取引は未実施。実市場での成績・全市場網羅性は未検証。速度の比較測定は未計測。外部取得の契約別運用と実機iPhoneは別途確認が必要。
 
 主な変更：coreのbottom-scout指標/スコア/意図/スキーマ/デジャヴ集計、APIのbottom-scout分析/chat/journal/acquisition/memory、serverの振り分け、ScoutAnswerと既存Kabumaru/ChatAnswerの接続、SDK同期の削除ガード、fixture・単体/E2E。
