@@ -15,6 +15,16 @@ import { explainWithResearchLlm, externalResearchPayload, ConfiguredResearchLlm 
 import { researchEvidenceSchema, researchResultSchema } from "../packages/core/kabumaru-research-schema";
 
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+it("走査根拠がない研究でも強気欄を空白にせず、必要な操作を案内する", () => {
+  const explanation = deterministicResearch([]);
+  const bullish = explanation.statements.filter(s => s.section === "bullish");
+  expect(bullish).toHaveLength(1);
+  expect(bullish[0].text).toContain("日足の取得だけでは");
+  expect(bullish[0].text).toContain("保存済みデータを走査");
+  expect(bullish[0].evidenceIds).toEqual([]);
+  expect(explanation.statements.some(s => s.section === "bearish")).toBe(true);
+  expect(explanation.statements.some(s => s.section === "watch")).toBe(true);
+});
 const bottom = () => researchEvidence({ kind: "bottom", sourceId: "private-source-marker", asOf: "2026-10-09", cutoff: "2026-10-09T14:59:59.999Z",
   methodVersion: "bottom-rule-v1", revisionIds: ["private-revision-marker"], limitations: ["private-limitation-marker"], facts: {
     score: 85, category: "反転兆候あり", status: "ready", metConditions: ["rsi_recovery", "volume_rebound"], unmetConditions: ["above_sma20"],

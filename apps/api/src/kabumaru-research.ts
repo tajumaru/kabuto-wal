@@ -47,7 +47,7 @@ async function buildResearch(service: Service, raw: unknown, now: Date): Promise
   const records = indexed.records.filter(p => p.providerCode === input.code && ((p.methodVersion === HUNTER_FORECAST_METHOD && p.hunter && !p.dejavu) || (p.methodVersion === "dejavu-consensus-v1" && p.dejavu && !p.hunter)) &&
     (service.mode === "demo" ? p.mode === "demo" : p.mode !== "demo") && p.dataAsOf <= asOf && knownBy(p.generatedAt, cutoff) && knownBy(p.createdAt, cutoff) && knownBy(p.hunter?.recordedAt ?? p.createdAt, cutoff) && knownBy(p.hunter?.cutoff ?? p.dejavu?.dataCutoff, cutoff));
   const local = indexed.memories;
-  const cacheKey = hash(["research-cache-v3", indexed.generation, RESEARCH_METHOD, service.mode, input.code, asOf, cutoff, job, detail, coverage, records]);
+  const cacheKey = hash(["research-cache-v4", indexed.generation, RESEARCH_METHOD, service.mode, input.code, asOf, cutoff, job, detail, coverage, records]);
   if (!input.recallRemote) {
     const cached = await cachedResearch(service, cacheKey);
     if (cached && cached.generatedAt <= now.toISOString()) return { ...cached, question: input.question };

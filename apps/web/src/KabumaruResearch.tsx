@@ -80,7 +80,7 @@ export function KabumaruResearch({ request }: { request: Request }) {
       <div className="research-cards">{Object.entries(sectionNames).map(([section,title]) => {
         const statements=result.explanation.statements.filter(s=>s.section===section);
         const paragraphs=(items:typeof statements)=>items.map(s=><p key={s.statementId}>{s.text} {s.evidenceIds.map((id,i)=><a key={id} href={`#evidence-${id}`}>根拠{i+1} </a>)}</p>);
-        return <section key={section} className="card"><h2>{title}</h2>{paragraphs(statements.slice(0,3))}{statements.length>3&&<details><summary>続きを表示（{statements.length-3}項目）</summary>{paragraphs(statements.slice(3))}</details>}</section>;
+        return <section key={section} className="card"><h2>{title}</h2>{statements.length ? paragraphs(statements.slice(0,3)) : <p>この研究で確認できる根拠はありません。研究サマリーと注意事項を確認してください。</p>}{section === "bullish" && !result.evidence.some(e=>e.kind==="bottom") && <Link to={`/bottom/hunter?${new URLSearchParams({asOf:result.asOf})}`}>底打ちハンターで走査状況を確認 →</Link>}{statements.length>3&&<details><summary>続きを表示（{statements.length-3}項目）</summary>{paragraphs(statements.slice(3))}</details>}</section>;
       })}</div>
       <section className="card"><h2>質問チャット</h2><p>定義済みの質問を、同じ取得時点の証拠で調べます。自由文や個人情報を送信する入力欄はありません。</p>
         <label><input type="checkbox" checked={saveHistory} onChange={e => setSaveHistory(e.target.checked)} />質問と回答をこの端末のJSONに保存</label>

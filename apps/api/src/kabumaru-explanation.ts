@@ -30,7 +30,12 @@ export function deterministicResearch(evidence: ResearchEvidence[]): ResearchExp
     for (const r of f.risks) add("bearish", `${risks[r] ?? "追加の未確認リスク"}。反転の根拠と分けて確認してください。`, ids);
     const watch = [...new Set([...f.unmetConditions, "support", "volume_rebound", "above_sma20"])];
     add("watch", `今後は${watch.map(c => conditions[c]).filter(Boolean).join("、")}の継続・変化を観察します。将来の条件成立は未確認です。`, ids);
-  } else add("summary", "対象銘柄の走査済み根拠がなく、確認できません。保存済みデータの走査とジョブ指定が必要です。");
+  } else {
+    add("summary", "対象銘柄の走査済み根拠がなく、確認できません。保存済みデータの走査とジョブ指定が必要です。");
+    add("bullish", "日足の取得だけでは強気の根拠は判定できません。底打ちハンターで対象の基準日の保存済みデータを走査し、対象銘柄を含むジョブを指定してください。走査済みでも、研究時点で利用可能だったデータを確認できない場合は根拠に採用しません。");
+    add("bearish", "弱気の条件も未判定です。強気の根拠がないことを、弱気の判定として扱いません。");
+    add("watch", "対象銘柄の走査結果と、研究時点で利用可能な日足が揃っているか確認してください。採用できない理由は研究サマリーの注意事項も確認してください。");
+  }
   const dejavu = evidence.find(e => e.kind === "dejavu");
   if (dejavu?.kind === "dejavu") {
     if (dejavu.facts.comparisons.some(c => c.sampleCount < 20)) add("uncertainty", "20件未満の少数標本を含み、中央値や上昇割合は不安定です。複数の事例数設定を比べて確認してください。", [dejavu.evidenceId]);
