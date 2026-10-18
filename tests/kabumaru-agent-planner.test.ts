@@ -1,0 +1,7 @@
+import { it,expect } from "vitest";
+import { mkdtemp,rm } from "node:fs/promises";
+import os from "node:os";import path from "node:path";
+import { Service } from "../apps/api/src/service";
+import { createAgentSession,agentState,readAgentPlan,agentEvents } from "../apps/api/src/kabumaru-agent-audit";
+import { proposeAgentPlan } from "../apps/api/src/kabumaru-agent-planner";
+it("計画は承認待ちまでで止まり、原本と監査鎖を照合する",async()=>{const root=await mkdtemp(path.join(os.tmpdir(),"agent-plan-")),s=new Service(root,"demo",false);try{const session=await createAgentSession(s,{objective:"不足データを調べる"}),q={budget:{maxExperiments:0,maxCohorts:0,maxRuntimeSeconds:30,maxJQuantsRequests:0,maxExternalWrites:0,maxSuiTransactions:0}},p=await proposeAgentPlan(s,session.sessionId,q);expect((await agentState(s,session.sessionId)).status).toBe("awaiting-approval");expect(p.methodIds).toHaveLength(0);expect(await readAgentPlan(s,session.sessionId,p.planId)).toEqual(p);expect((await agentEvents(s,session.sessionId)).map(e=>e.status)).toEqual(["draft","awaiting-approval"]);await expect(proposeAgentPlan(s,session.sessionId,{...q,notebookIds:["a".repeat(64)]})).rejects.toThrow();await s.store.write(`research/agent/sessions/${session.sessionId}/plans/${p.planId}/original.json`,{...p,objective:"changed"});await expect(readAgentPlan(s,session.sessionId,p.planId)).rejects.toThrow("hash");}finally{await rm(root,{recursive:true,force:true});}});
