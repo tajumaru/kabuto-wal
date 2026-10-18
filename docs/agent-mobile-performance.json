@@ -1,0 +1,13 @@
+{
+  "viewport": "320x568 Chromium; synthetic/demo; warm local server",
+  "samplesMs": [
+    980.38,
+    991.57,
+    923.79,
+    993.02,
+    923.83
+  ],
+  "medianMs": 980.38,
+  "minMs": 923.79,
+  "maxMs": 993.02
+}

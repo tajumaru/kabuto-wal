@@ -1,0 +1,44 @@
+{
+  "fixture": "synthetic 30 symbols, 31 fixed cohorts, 5 validation folds; 4 independent validation dates/fold => insufficient; final Test stays sealed",
+  "measuredAt": "2026-10-18T03:51:20.723Z",
+  "node": "v24.14.0",
+  "platform": "win32",
+  "planningMs": 466,
+  "startToFirstAttemptMs": 451.64,
+  "foldMs": [
+    {
+      "stepId": "validation-0-0",
+      "durationMs": 2050
+    },
+    {
+      "stepId": "validation-1-0",
+      "durationMs": 1999
+    },
+    {
+      "stepId": "validation-2-0",
+      "durationMs": 2559
+    },
+    {
+      "stepId": "validation-3-0",
+      "durationMs": 2383
+    },
+    {
+      "stepId": "validation-4-0",
+      "durationMs": 2335
+    }
+  ],
+  "fiveFoldTotalMs": 11326,
+  "completeRunMs": 36852.58,
+  "notebookGenerationMs": 3876.74,
+  "checkpointWrites": 132,
+  "rssBeforeRunBytes": 168361984,
+  "peakRssBytes": 273383424,
+  "experiments": 5,
+  "budgetRuntimeMs": 35659,
+  "unmeasured": [
+    "real market",
+    "full-market large-cohort processing",
+    "physical iPhone Safari"
+  ],
+  "externalRequests": 0
+}
