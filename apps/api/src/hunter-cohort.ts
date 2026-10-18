@@ -56,7 +56,7 @@ export async function createCohort(service:Service,raw:unknown,now=new Date()){
   });
 }
 export function registerHunterCohorts(app:FastifyInstance,service:Service){
-  const start=(id:string)=>{void runCohortJob(service,id).catch(async()=>{await service.store.lock(async()=>{const j=await readCohortJob(service,id);if(j.status==="queued")await service.store.write(cohortJobKey(id),{...j,status:"failed",error:"評価入力の検証に失敗しました"});});});};
+  const start=(id:string)=>{void runCohortJob(service,id).catch(async()=>{try{await service.store.lock(async()=>{const j=await readCohortJob(service,id);if(j.status==="queued")await service.store.write(cohortJobKey(id),{...j,status:"paused",error:"評価workerまたは入力を確認し、再開してください"});});}catch{/* Preserve checkpoint for recovery. */}});};
   app.post("/api/bottom/hunter/cohorts/:id/evaluation-jobs",async req=>{const {id}=z.object({id:cohortIdSchema}).parse(req.params);z.object({}).strict().parse(req.body??{});const job=await createCohortJob(service,id);start(job.runId);return job;});
   app.get("/api/bottom/hunter/cohort-evaluation-jobs/:id",async req=>cohortJobProgress(service,z.object({id:cohortIdSchema}).parse(req.params).id));
   app.post("/api/bottom/hunter/cohort-evaluation-jobs/:id/control",async req=>{const {id}=z.object({id:cohortIdSchema}).parse(req.params),q=z.object({action:z.enum(["pause","cancel","resume"])}).strict().parse(req.body);const j=await controlCohortJob(service,id,q.action);if(q.action==="resume")start(id);return j;});

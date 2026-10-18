@@ -5,12 +5,17 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { demoBars, master } from "../../fixtures/demo";
+import { labFixture } from "../../fixtures/lab";
 const webPort=Number(process.env.E2E_PORT??5517),apiPort=Number(process.env.E2E_API_PORT??3002);
 process.env.APP_ORIGIN = `http://localhost:${webPort}`;
 // A fresh seeded store prevents prior empty/personal settings changing test results.
 const dir = await mkdtemp(path.join(os.tmpdir(), "kabutowal-e2e-"));
 const service = new Service(dir, "demo", false);
 const app = await createApp(service);
+const existingCalendar=await service.store.read<{date:string;open:boolean}[]>("market/calendar.json");
+await labFixture(service);
+const labCalendar=await service.store.read<{date:string;open:boolean}[]>("market/calendar.json");
+await service.store.write("market/calendar.json",[...new Map([...existingCalendar,...labCalendar].map(d=>[d.date,d])).values()].sort((a,b)=>a.date.localeCompare(b.date)));
 // Browser tests exercise real APIs with deterministic fixture files; they do not
 // need thousands of separately fsynced acquisition revisions at every startup.
 for (const stock of master)

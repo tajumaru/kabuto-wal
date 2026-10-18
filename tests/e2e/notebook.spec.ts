@@ -4,7 +4,7 @@ test("固定コホートを評価し、研究ノート・記憶・過去締切�
   const launched=await page.request.post("/api/bottom/hunter/jobs",{data:{asOf:"2026-08-10",cutoff:"2026-08-10T14:59:59.999Z"}});expect(launched.ok()).toBe(true);const job=await launched.json();
   await expect.poll(async()=>(await(await page.request.get(`/api/bottom/hunter/jobs/${job.id}`)).json()).status).toBe("completed");
   await page.goto("/research/notebook");await expect(page.getByRole("heading",{name:"かぶまる研究ノート",exact:true})).toBeVisible();
-  await page.getByLabel("完了済み分析ジョブ").selectOption(job.id);await page.getByRole("button",{name:"固定コホートを作成",exact:true}).click();
+  await page.getByLabel("完了済み分析ジョブ").selectOption(job.id);const created=page.waitForResponse(r=>r.url().endsWith("/api/bottom/hunter/cohorts")&&r.request().method()==="POST");await page.getByRole("button",{name:"固定コホートを作成",exact:true}).click();const response=await created;expect(response.ok(),await response.text()).toBe(true);
   await expect(page.getByLabel("保存済みコホート")).not.toHaveValue("");
   await page.getByRole("button",{name:"期限後評価を実行",exact:true}).click();await expect(page.getByRole("status").filter({hasText:"保存済み価格で評価：completed"})).toBeVisible();
   await page.getByLabel("テーマ",{exact:true}).selectOption("false-rebound");await page.getByLabel("研究時点の仮説（観測事実とは別）").fill("反発後の再下落を検証する仮説");

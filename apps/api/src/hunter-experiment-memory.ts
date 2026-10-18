@@ -2,21 +2,169 @@ import { z } from "zod";
 import type { Service } from "./service";
 import { completedLabParts } from "./hunter-experiment-runner";
 import { readLabReport } from "./hunter-experiment-report";
-import { labBase,readLabMethod,labEvents } from "./hunter-experiment";
+import { labBase, readLabMethod, labEvents } from "./hunter-experiment";
 import { hash } from "../../../packages/integrations/adjusted-series";
 import { cohortIdSchema } from "../../../packages/core/hunter-cohort-schema";
 import { syncMemories } from "../../../packages/integrations/index";
 import { activeNotebookMemory } from "./kabumaru-notebook-memory";
-export const labNamespace=(mode:string)=>`kabutowal:lab:v1:${mode}`;
-export const labMemoryId=(inputHash:string,stage:string)=>hash(["lab-memory-v1",inputHash,stage]);
-export async function labProvenance(s:Service,id:string){const {job,plan,parts}=await completedLabParts(s,id),method=await readLabMethod(s,job.experimentId),report=await readLabReport(s,id),manifest={schemaVersion:1,kind:"lab-manifest",method,plan,runId:id,inputHash:job.inputHash,resultHashes:parts.map(p=>p.contentHash),reportId:report.reportId,evidenceId:report.evidenceId};return {manifestHash:hash(manifest),algorithm:"sha256-json-v1",manifest,suiWrite:false};}
-export async function saveLabMemory(s:Service,id:string){const report=await readLabReport(s,id),m=await readLabMethod(s,report.experimentId),events=await labEvents(s,m.experimentId),recordId=labMemoryId(report.inputHash,report.stage),status=events.at(-1)?.status??"draft";
- return s.store.lock(async()=>{if(await s.store.read(`memories/${recordId}.json`,null)||await s.store.read(`sync/${recordId}.json`,null))return {recordId,status:await activeNotebookMemory(s,recordId)?"existing":"suppressed"};
- const compact={runId:id,experimentId:m.experimentId,methodVersion:m.methodVersion,parameters:m.parameters,candidateThreshold:m.candidateThreshold,hypothesis:m.hypothesis.slice(0,500),period:report.period,stage:report.stage,comparisons:report.comparisons,evidenceId:report.evidenceId,reportId:report.reportId,adoptionStatus:status,warnings:report.notes.slice(0,8)},memory={schemaVersion:1,kind:"lab_experiment_summary",recordId,active:true,externalConsent:false,createdAt:new Date().toISOString(),mode:s.mode,source:s.mode==="demo"?"fixture":"jquants-v2",dataAsOf:report.period.to,namespace:labNamespace(s.mode),...compact};
- await s.store.write(`memories/${recordId}.json`,{...memory,text:JSON.stringify({recordId,...compact})},true);await s.store.write(`sync/${recordId}.json`,{status:"pending"});return {recordId,status:"pending"};});}
-function allowed(s:Service,confirm:boolean){if(!confirm||s.mode==="demo"||process.env.ALLOW_MARKET_DATA_TO_MEMWAL!=="true"||process.env.JQUANTS_MEMWAL_RIGHTS_CONFIRMED!=="true")throw Error("今回の明示操作・市場データ送信許可・権利確認が必要です");}
-export async function syncLabMemory(s:Service,id:string,confirm:boolean){allowed(s,confirm);const report=await readLabReport(s,id),recordId=labMemoryId(report.inputHash,report.stage);return s.store.lock(async()=>{const memory=await activeNotebookMemory(s,recordId);if(!memory||memory.kind!=="lab_experiment_summary")throw Error("削除・無効化済み、または未保存です");const provider=await s.memoryProvider();if(!provider)throw Error("MemWal未接続");await s.store.write(`memories/${recordId}.json`,{...memory,externalConsent:true});return syncMemories(s.store,provider,true,[recordId]);});}
-export async function recallLabMemory(s:Service,raw:unknown){const q=z.object({confirmExternal:z.literal(true),experimentId:cohortIdSchema}).strict().parse(raw);allowed(s,q.confirmExternal);await readLabMethod(s,q.experimentId);const provider=await s.memoryProvider();if(!provider)throw Error("MemWal未接続");const result=await provider.recall({query:`実験 ${q.experimentId}`,namespace:labNamespace(s.mode),limit:20}),records=[];
- for(const r of result.results){if(r.text.length>30000)continue;try{const ref=z.object({recordId:cohortIdSchema,runId:cohortIdSchema}).parse(JSON.parse(r.text)),memory=await activeNotebookMemory(s,ref.recordId);if(memory?.runId!==ref.runId||memory.mode!==s.mode||memory.namespace!==labNamespace(s.mode)||memory.experimentId!==q.experimentId)continue;const report=await readLabReport(s,ref.runId);if(labMemoryId(report.inputHash,report.stage)!==ref.recordId||report.experimentId!==q.experimentId)continue;records.push({runId:ref.runId,reportId:report.reportId,evidenceId:report.evidenceId});}catch{/* Remote prose is never trusted as experiment evidence. */}}return {records};
+export const labNamespace = (mode: string) => `kabutowal:lab:v1:${mode}`;
+export const labMemoryId = (inputHash: string, stage: string) =>
+  hash(["lab-memory-v1", inputHash, stage]);
+export async function labProvenance(s: Service, id: string) {
+  const { job, plan, parts } = await completedLabParts(s, id),
+    method = await readLabMethod(s, job.experimentId),
+    report = await readLabReport(s, id),
+    manifest = {
+      schemaVersion: 1,
+      kind: "lab-manifest",
+      method,
+      plan,
+      runId: id,
+      inputHash: job.inputHash,
+      resultHashes: parts.map((p) => p.contentHash),
+      reportId: report.reportId,
+      evidenceId: report.evidenceId,
+    };
+  return {
+    manifestHash: hash(manifest),
+    algorithm: "sha256-json-v1",
+    manifest,
+    suiWrite: false,
+  };
 }
-export async function saveLabProvenance(s:Service,id:string){const p=await labProvenance(s,id);await s.store.lock(async()=>{const key=`${labBase}/runs/${id}/provenance/original.json`,old=await s.store.read(key,null);if(old&&hash(old)!==hash(p))throw Error("manifestの不一致");if(!old)await s.store.write(key,p,true);});return p;}
+export async function saveLabMemory(s: Service, id: string) {
+  const report = await readLabReport(s, id),
+    m = await readLabMethod(s, report.experimentId),
+    events = await labEvents(s, m.experimentId),
+    recordId = labMemoryId(report.inputHash, report.stage),
+    status = events.at(-1)?.status ?? "draft";
+  return s.store.lock(async () => {
+    if (
+      (await s.store.read(`memories/${recordId}.json`, null)) ||
+      (await s.store.read(`sync/${recordId}.json`, null))
+    )
+      return {
+        recordId,
+        status: (await activeNotebookMemory(s, recordId))
+          ? "existing"
+          : "suppressed",
+      };
+    const compact = {
+        runId: id,
+        experimentId: m.experimentId,
+        methodVersion: m.methodVersion,
+        parameters: m.parameters,
+        candidateThreshold: m.candidateThreshold,
+        hypothesis: m.hypothesis.slice(0, 500),
+        period: report.period,
+        stage: report.stage,
+        comparisons: report.comparisons,
+        evidenceId: report.evidenceId,
+        reportId: report.reportId,
+        adoptionStatus: status,
+        warnings: report.notes.slice(0, 8),
+      },
+      memory = {
+        schemaVersion: 1,
+        kind: "lab_experiment_summary",
+        recordId,
+        active: true,
+        externalConsent: false,
+        createdAt: new Date().toISOString(),
+        mode: s.mode,
+        source: s.mode === "demo" ? "fixture" : "jquants-v2",
+        dataAsOf: report.period.to,
+        namespace: labNamespace(s.mode),
+        ...compact,
+      };
+    await s.store.write(
+      `memories/${recordId}.json`,
+      { ...memory, text: JSON.stringify({ recordId, ...compact }) },
+      true,
+    );
+    await s.store.write(`sync/${recordId}.json`, { status: "pending" });
+    return { recordId, status: "pending" };
+  });
+}
+function allowed(s: Service, confirm: boolean) {
+  if (
+    !confirm ||
+    s.mode === "demo" ||
+    process.env.ALLOW_MARKET_DATA_TO_MEMWAL !== "true" ||
+    process.env.JQUANTS_MEMWAL_RIGHTS_CONFIRMED !== "true"
+  )
+    throw Error("今回の明示操作・市場データ送信許可・権利確認が必要です");
+}
+export async function syncLabMemory(s: Service, id: string, confirm: boolean) {
+  allowed(s, confirm);
+  const report = await readLabReport(s, id),
+    recordId = labMemoryId(report.inputHash, report.stage);
+  return s.store.lock(async () => {
+    const memory = await activeNotebookMemory(s, recordId);
+    if (!memory || memory.kind !== "lab_experiment_summary")
+      throw Error("削除・無効化済み、または未保存です");
+    const provider = await s.memoryProvider();
+    if (!provider) throw Error("MemWal未接続");
+    await s.store.write(`memories/${recordId}.json`, {
+      ...memory,
+      externalConsent: true,
+    });
+    return syncMemories(s.store, provider, true, [recordId]);
+  });
+}
+export async function recallLabMemory(s: Service, raw: unknown) {
+  const q = z
+    .object({ confirmExternal: z.literal(true), experimentId: cohortIdSchema })
+    .strict()
+    .parse(raw);
+  allowed(s, q.confirmExternal);
+  await readLabMethod(s, q.experimentId);
+  const provider = await s.memoryProvider();
+  if (!provider) throw Error("MemWal未接続");
+  const result = await provider.recall({
+      query: `実験 ${q.experimentId}`,
+      namespace: labNamespace(s.mode),
+      limit: 20,
+    }),
+    records = [];
+  for (const r of result.results) {
+    if (r.text.length > 30000) continue;
+    try {
+      const ref = z
+          .object({ recordId: cohortIdSchema, runId: cohortIdSchema })
+          .parse(JSON.parse(r.text)),
+        memory = await activeNotebookMemory(s, ref.recordId);
+      if (
+        memory?.runId !== ref.runId ||
+        memory.mode !== s.mode ||
+        memory.namespace !== labNamespace(s.mode) ||
+        memory.experimentId !== q.experimentId
+      )
+        continue;
+      const report = await readLabReport(s, ref.runId);
+      if (
+        labMemoryId(report.inputHash, report.stage) !== ref.recordId ||
+        report.experimentId !== q.experimentId
+      )
+        continue;
+      records.push({
+        runId: ref.runId,
+        reportId: report.reportId,
+        evidenceId: report.evidenceId,
+      });
+    } catch {
+      /* Remote prose is never trusted as experiment evidence. */
+    }
+  }
+  return { records };
+}
+export async function saveLabProvenance(s: Service, id: string) {
+  const p = await labProvenance(s, id);
+  await s.store.lock(async () => {
+    const key = `${labBase}/runs/${id}/provenance/original.json`,
+      old = await s.store.read(key, null);
+    if (old && hash(old) !== hash(p)) throw Error("manifestの不一致");
+    if (!old) await s.store.write(key, p, true);
+  });
+  return p;
+}

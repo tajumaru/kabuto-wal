@@ -1,17 +1,131 @@
 import { z } from "zod";
 import { cohortIdSchema } from "./hunter-cohort-schema";
-export const LAB_METHOD="hunter-experiment-v1";
-export const labFeatures=["drawdown","oversold","support","above_sma5","sma5_rising","rsi_recovery","macd_recovery","volume_rebound","lower_wick","above_sma20"] as const;
-export const labWeightsSchema=z.object(Object.fromEntries(labFeatures.map(k=>[k,z.number().finite().min(0).max(100)])) as Record<typeof labFeatures[number],z.ZodNumber>).strict().refine(p=>Object.values(p).reduce((a,b)=>a+b,0)>0,"重み合計は正数です");
-export const labMethodInputSchema=z.object({name:z.string().min(1).max(100),description:z.string().max(500).default(""),hypothesis:z.string().min(1).max(1000),parameters:labWeightsSchema,candidateThreshold:z.number().finite().min(0).max(100),evidenceIds:z.array(cohortIdSchema).max(100).default([]),proposalId:cohortIdSchema.optional()}).strict();
-export const labMethodSchema=labMethodInputSchema.extend({schemaVersion:z.literal(1),experimentId:cohortIdSchema,parentMethodVersion:z.literal("bottom-rule-v1"),featureVersion:z.literal("bottom-80-v1"),methodVersion:z.literal(LAB_METHOD),createdAt:z.string().datetime()}).strict();
-export const labStateSchema=z.enum(["draft","testing","validated","rejected","proposed-for-adoption"]);
-export type LabMethod=z.infer<typeof labMethodSchema>;
-export const labPeriodSchema=z.object({from:z.string().date(),to:z.string().date()}).strict().refine(p=>p.from<=p.to,"期間が逆です");
-export const labPlanInputSchema=z.object({cohortIds:z.array(cohortIdSchema).min(3).max(100),training:labPeriodSchema,validation:labPeriodSchema,test:labPeriodSchema,embargoSessions:z.number().int().min(0).max(60).default(20),costBps:z.number().finite().min(0).max(1000).default(0),slippageBps:z.number().finite().min(0).max(1000).default(0)}).strict().superRefine((p,c)=>{if(p.training.to>=p.validation.from||p.validation.to>=p.test.from)c.addIssue({code:"custom",message:"Training→Validation→Testを非重複で指定してください"});});
-export type LabPlanInput=z.infer<typeof labPlanInputSchema>;
-export const labPlanSchema=labPlanInputSchema.safeExtend({planId:cohortIdSchema,createdAt:z.string().datetime(),mode:z.enum(["demo","research"]),cohortHashes:z.record(z.string(),cohortIdSchema),calendarHash:cohortIdSchema,partitions:z.record(z.string(),z.enum(["training","validation","test","purged"])),purgeReasons:z.record(z.string(),z.string()),evaluationCutoff:z.string().datetime(),evaluationIds:z.array(cohortIdSchema),methodVersion:z.literal("temporal-lab-v1")}).strict();
-export type LabPlan=z.infer<typeof labPlanSchema>;
-export const labRunInputSchema=z.object({experimentId:cohortIdSchema,planId:cohortIdSchema,stage:z.enum(["training","validation","test"]),confirm:z.literal(true)}).strict();
-export const labRunSchema=labRunInputSchema.extend({runId:cohortIdSchema,createdAt:z.string().datetime(),inputHash:cohortIdSchema,status:z.enum(["queued","running","paused","cancelled","failed","completed"]),processed:z.number().int().nonnegative(),total:z.number().int().nonnegative(),failed:z.number().int().nonnegative(),error:z.string().optional(),lease:z.object({token:z.string().uuid(),pid:z.number(),expiresAt:z.number()}).optional()}).strict();
-export type LabRun=z.infer<typeof labRunSchema>;
+export const LAB_METHOD = "hunter-experiment-v1";
+export const labFeatures = [
+  "drawdown",
+  "oversold",
+  "support",
+  "above_sma5",
+  "sma5_rising",
+  "rsi_recovery",
+  "macd_recovery",
+  "volume_rebound",
+  "lower_wick",
+  "above_sma20",
+] as const;
+export const labWeightsSchema = z
+  .object(
+    Object.fromEntries(
+      labFeatures.map((k) => [k, z.number().finite().min(0).max(100)]),
+    ) as Record<(typeof labFeatures)[number], z.ZodNumber>,
+  )
+  .strict()
+  .refine(
+    (p) => Object.values(p).reduce((a, b) => a + b, 0) > 0,
+    "重み合計は正数です",
+  );
+export const labMethodInputSchema = z
+  .object({
+    name: z.string().min(1).max(100),
+    description: z.string().max(500).default(""),
+    hypothesis: z.string().min(1).max(1000),
+    parameters: labWeightsSchema,
+    candidateThreshold: z.number().finite().min(0).max(100),
+    evidenceIds: z.array(cohortIdSchema).max(100).default([]),
+    proposalId: cohortIdSchema.optional(),
+  })
+  .strict();
+export const labMethodSchema = labMethodInputSchema
+  .extend({
+    schemaVersion: z.literal(1),
+    experimentId: cohortIdSchema,
+    parentMethodVersion: z.literal("bottom-rule-v1"),
+    featureVersion: z.literal("bottom-80-v1"),
+    methodVersion: z.literal(LAB_METHOD),
+    createdAt: z.string().datetime(),
+  })
+  .strict();
+export const labStateSchema = z.enum([
+  "draft",
+  "testing",
+  "validated",
+  "rejected",
+  "proposed-for-adoption",
+]);
+export type LabMethod = z.infer<typeof labMethodSchema>;
+export const labPeriodSchema = z
+  .object({ from: z.string().date(), to: z.string().date() })
+  .strict()
+  .refine((p) => p.from <= p.to, "期間が逆です");
+export const labPlanInputSchema = z
+  .object({
+    cohortIds: z.array(cohortIdSchema).min(3).max(100),
+    training: labPeriodSchema,
+    validation: labPeriodSchema,
+    test: labPeriodSchema,
+    embargoSessions: z.number().int().min(0).max(60).default(20),
+    costBps: z.number().finite().min(0).max(1000).default(0),
+    slippageBps: z.number().finite().min(0).max(1000).default(0),
+  })
+  .strict()
+  .superRefine((p, c) => {
+    if (p.training.to >= p.validation.from || p.validation.to >= p.test.from)
+      c.addIssue({
+        code: "custom",
+        message: "Training→Validation→Testを非重複で指定してください",
+      });
+  });
+export type LabPlanInput = z.infer<typeof labPlanInputSchema>;
+export const labPlanSchema = labPlanInputSchema
+  .safeExtend({
+    planId: cohortIdSchema,
+    createdAt: z.string().datetime(),
+    mode: z.enum(["demo", "research"]),
+    cohortHashes: z.record(z.string(), cohortIdSchema),
+    calendarHash: cohortIdSchema,
+    partitions: z.record(
+      z.string(),
+      z.enum(["training", "validation", "test", "purged"]),
+    ),
+    purgeReasons: z.record(z.string(), z.string()),
+    evaluationCutoff: z.string().datetime(),
+    evaluationIds: z.array(cohortIdSchema),
+    methodVersion: z.literal("temporal-lab-v1"),
+  })
+  .strict();
+export type LabPlan = z.infer<typeof labPlanSchema>;
+export const labRunInputSchema = z
+  .object({
+    experimentId: cohortIdSchema,
+    planId: cohortIdSchema,
+    stage: z.enum(["training", "validation", "test"]),
+    confirm: z.literal(true),
+  })
+  .strict();
+export const labRunSchema = labRunInputSchema
+  .extend({
+    runId: cohortIdSchema,
+    createdAt: z.string().datetime(),
+    inputHash: cohortIdSchema,
+    status: z.enum([
+      "queued",
+      "running",
+      "paused",
+      "cancelled",
+      "failed",
+      "completed",
+    ]),
+    processed: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+    error: z.string().optional(),
+    lease: z
+      .object({
+        token: z.string().uuid(),
+        pid: z.number(),
+        expiresAt: z.number(),
+      })
+      .optional(),
+  })
+  .strict();
+export type LabRun = z.infer<typeof labRunSchema>;

@@ -239,7 +239,7 @@ export class Store {
         throw Error("バックアップ内に許可されないファイル");
     }
     for (const [key, value] of Object.entries(entries)) {
-      if (key.endsWith("/original.json") || key.startsWith("research/results/") || /^market\/hunter\/cohorts\/[a-f0-9]{64}\//.test(key)) {
+      if (key.endsWith("/original.json") || key.startsWith("research/results/") || /^research\/lab\/.*\/(?:events|parts|validation)\//.test(key) || /^market\/hunter\/cohorts\/[a-f0-9]{64}\//.test(key)) {
         const old = await this.read(key, null);
         if (old && JSON.stringify(old) !== JSON.stringify(value))
           throw Error("元予測と復元内容が競合しています");
