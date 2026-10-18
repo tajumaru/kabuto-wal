@@ -1,14 +1,38 @@
 .agent-page {
+  width: 100%;
+  min-width: 0;
   max-width: 1100px;
   margin: auto;
-  padding: 12px max(12px, env(safe-area-inset-right))
-    max(28px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  padding: 0 max(0px, env(safe-area-inset-right))
+    calc(100px + env(safe-area-inset-bottom))
+    max(0px, env(safe-area-inset-left));
   overflow-wrap: anywhere;
   scroll-padding-bottom: 100px;
 }
 .agent-page .card {
   margin-bottom: 16px;
   min-width: 0;
+}
+.agent-page h1 {
+  margin: 0 0 12px;
+  font-size: clamp(1.4rem, 2.4vw, 2rem);
+  line-height: 1.5;
+}
+.agent-page h2 {
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+.agent-page p {
+  line-height: 1.85;
+  margin: 12px 0;
+}
+.agent-page h3 {
+  margin: 24px 0 12px;
+}
+.agent-page a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .agent-page button,
 .agent-page input,
@@ -18,12 +42,78 @@
   font-size: 16px;
 }
 .agent-page button {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
   margin: 6px 8px 6px 0;
   white-space: normal;
+  max-width: 100%;
+  height: auto;
+  line-height: 1.6;
+  touch-action: manipulation;
+}
+.agent-page button:hover:not(:disabled) {
+  background: var(--soft);
+  border-color: var(--muted);
+}
+.agent-page button:disabled {
+  opacity: 1;
+  color: var(--muted);
+  background: var(--page);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+.agent-page button.agent-primary {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--surface);
+  font-weight: 600;
+  padding: 12px 20px;
+}
+.agent-page button.agent-primary:hover:not(:disabled) {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.agent-page button.agent-primary:disabled {
+  background: var(--soft);
+  color: var(--muted);
+  border-color: var(--border);
+}
+.agent-page button.agent-danger {
+  background: transparent;
+  color: #9b3c32;
+  border-color: #d9b1a9;
+}
+.agent-page button.agent-danger:hover:not(:disabled) {
+  background: #fff0ec;
+  border-color: #9b3c32;
+}
+:root[data-theme="dark"] .agent-page button.agent-danger {
+  color: #f0aaa0;
+  border-color: #80544f;
+}
+:root[data-theme="dark"] .agent-page button.agent-danger:hover:not(:disabled) {
+  background: #432d2b;
+}
+.agent-page label small {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.8;
+  color: var(--muted);
 }
 .agent-page label {
-  display: block;
-  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 18px 0;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.7;
 }
 .agent-page input:not([type="checkbox"]),
 .agent-page textarea,
@@ -41,6 +131,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-direction: row;
+  font-weight: 400;
 }
 .agent-check input {
   width: 24px;
@@ -54,10 +146,51 @@
   padding: 8px;
   box-sizing: border-box;
 }
+.agent-page dl {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(0, 2fr);
+  margin: 20px 0;
+  border-top: 1px solid var(--border);
+}
+.agent-page dt,
+.agent-page dd {
+  margin: 0;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  line-height: 1.7;
+}
+.agent-page dt {
+  color: var(--muted);
+  background: var(--soft);
+}
+.agent-timeline {
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 0 16px 0 28px;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+.agent-timeline li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.agent-timeline p {
+  margin: 4px 0;
+  font-size: 13px;
+}
+body:has(.agent-page) .kabumaru-bubble {
+  display: none;
+}
 .agent-header {
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
+  align-items: center;
+  gap: 24px;
+}
+.agent-header .dejavu-kabumaru {
+  width: 100px;
+  height: 120px;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 .agent-header > div {
   min-width: 0;
@@ -67,12 +200,157 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
+.agent-budget label {
+  margin: 0 0 16px;
+}
 .agent-page progress {
   width: 100%;
+}
+.agent-page [id] {
+  scroll-margin-top: 20px;
+}
+.agent-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 20px 0;
+}
+.agent-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.agent-steps span {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--soft);
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+.agent-steps [aria-current="step"] {
+  border-color: var(--primary);
+  background: var(--soft);
+  color: var(--text);
+  font-weight: 600;
+}
+.agent-next {
+  background: var(--soft);
+  padding: 16px;
+  border-radius: 10px;
+}
+.agent-mode {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.agent-mode legend {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 0 6px;
+}
+.agent-page .agent-mode label {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  font-weight: 400;
+}
+.agent-page .agent-mode input {
+  width: 20px;
+  flex: 0 0 20px;
+  margin: 0;
+}
+.agent-mode small {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.agent-advanced {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.agent-page .agent-secondary {
+  color: var(--text);
+  background: var(--soft);
+  border: 1px solid var(--border);
+}
+.agent-saved-inputs fieldset {
+  max-height: 360px;
+  overflow-y: auto;
+  margin: 16px 0;
+}
+@media (max-width: 900px) {
+  .agent-steps {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .agent-steps li {
+    padding: 8px 12px;
+  }
+}
+@media (max-width: 700px) {
+  body:has(.agent-page) .shell {
+    flex-wrap: wrap;
+  }
+  body:has(.agent-page) .shell > main > header {
+    height: auto;
+    min-height: 77px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  /* Keep chat available after the page instead of covering research controls. */
+  body:has(.agent-page) .kabumaru {
+    position: relative;
+    inset: auto;
+    flex: 0 0 100%;
+    display: flex;
+    justify-content: flex-end;
+    padding: 0 20px calc(100px + env(safe-area-inset-bottom));
+  }
+  body:has(.agent-page) .kabumaru-panel {
+    bottom: calc(210px + env(safe-area-inset-bottom));
+    right: 16px;
+  }
+  .agent-page {
+    padding-bottom: 24px;
+  }
+  .agent-page .card {
+    padding: 20px 16px;
+  }
+  .agent-header {
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .agent-header .dejavu-kabumaru {
+    width: 56px;
+    height: 72px;
+  }
+  .agent-budget {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
 }
 @media (max-width: 389px) {
   .agent-header {
     display: block;
+  }
+  .agent-page dl {
+    grid-template-columns: minmax(90px, 1fr) minmax(0, 1.5fr);
+    font-size: 13px;
   }
   .agent-budget {
     grid-template-columns: 1fr;
@@ -80,7 +358,7 @@
   .agent-page h1 {
     font-size: 1.35rem;
   }
-  .agent-page button {
+  .agent-page button.agent-primary {
     width: 100%;
     margin-right: 0;
   }

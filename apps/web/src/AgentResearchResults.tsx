@@ -31,30 +31,40 @@ export function AgentResearchResults({
       <strong>
         {
           {
-            supported: "観測範囲内で支持",
-            mixed: "結果が混在",
-            "not-supported": "仮説は支持されず",
-            "insufficient-data": "データ不足",
+            supported: "今回調べた範囲では、改善が見られました",
+            mixed: "時期によって結果が分かれました",
+            "not-supported": "今回の比較では、改善を確認できませんでした",
+            "insufficient-data": "判断するためのデータが足りません",
           }[r.classification]
         }
       </strong>
-      <p>{r.reason}</p>
+      {r.classification === "insufficient-data" && (
+        <p>
+          データがない、比較する期間を選んでいない、件数が少ないなどの理由で、ルールの良し悪しをまだ判断できません。これは必ずしも操作の失敗ではありません。
+        </p>
+      )}
+      <details>
+        <summary>評価の詳しい理由を読む</summary>
+        <p>{r.reason}</p>
+      </details>
       <p>
-        研究仮説への評価で、株価上昇・本番採用・統計的優位性を保証しません。
+        この結果は今回の調査についての振り返りです。これから株価が上がると約束するものではありません。
       </p>
-      <h3>walk-forward結果</h3>
-      {r.comparison.folds.length === 0 && <p>検証foldが未指定・未完了です。</p>}
+      <h3>時期を変えて比べた結果</h3>
+      {r.comparison.folds.length === 0 && (
+        <p>比較する時期を選んでいないか、まだ比較が終わっていません。</p>
+      )}
       {r.comparison.folds.map((f) => (
         <details key={f.labPlanId}>
           <summary>
-            fold {f.index + 1} · {f.included ? "集計対象" : "除外"} ·{" "}
+            期間 {f.index + 1} · {f.included ? "集計対象" : "集計対象外"} ·{" "}
             {f.period.from}〜{f.period.to}
           </summary>
           <p>{f.reason}</p>
           {f.methods.map((m) => (
             <p key={m.methodId}>
-              実験方式 {m.methodId.slice(0, 12)} ／ 現行対比差 {pct(m.score)} ／
-              候補対照差 {pct(m.candidateControlDifference)} ／ 候補
+              判定ルール {m.methodId.slice(0, 12)} ／ 現行対比差 {pct(m.score)}{" "}
+              ／ 候補対照差 {pct(m.candidateControlDifference)} ／ 候補
               {m.candidateCount}件 ／ データ不足
               {(m.missingFeatureRate * 100).toFixed(1)}% ／ Evidence{" "}
               {m.evidenceId}
@@ -71,10 +81,11 @@ export function AgentResearchResults({
         </p>
       ))}
       <p>
-        探索ジョブ数：{r.comparison.trialCount}。多重比較による過学習に注意。
+        保存された実験の数：{r.comparison.trialCount}
+        。何度も試すと、偶然よい結果だけが見つかることがあります。
       </p>
       <details>
-        <summary>方式間の対応付き差</summary>
+        <summary>同じ日に比べたルールごとの違い</summary>
         {r.comparison.pairedMethodDifferences.length === 0 ? (
           <p>比較方式または対応時点が不足しています。</p>
         ) : (
@@ -87,7 +98,7 @@ export function AgentResearchResults({
           ))
         )}
       </details>
-      <h3>最終Test</h3>
+      <h3>まだ使っていない期間での最後の確認</h3>
       {r.finalTest ? (
         <p>
           実験 {r.finalTest.experimentId.slice(0, 12)} ／ 現行対比差{" "}
@@ -96,9 +107,11 @@ export function AgentResearchResults({
           {r.finalTest.evidenceId}
         </p>
       ) : (
-        <p>方式未選択・データ不足等のため未開封、または未完了です。</p>
+        <p>
+          比較するルールが決まっていない、データが足りないなどの理由で、最後の確認は行っていないか、まだ終わっていません。
+        </p>
       )}
-      <h3>不確実性</h3>
+      <h3>結果を読むときの注意</h3>
       <details>
         <summary>限界と注意点を確認</summary>
         {r.uncertainty.map((w, i) => (
@@ -133,7 +146,10 @@ export function AgentResearchResults({
           次の根拠
         </button>
       </details>
-      <p>Result hash {r.reportId}</p>
+      <details>
+        <summary>結果を照合するための記録ID</summary>
+        <p>{r.reportId}</p>
+      </details>
     </section>
   );
 }

@@ -26,6 +26,7 @@ export function AgentApprovalPanel({
       </label>
       <p>承認しても外部送信・署名・本番採点変更の権限は付与されません。</p>
       <button
+        className="agent-primary"
         disabled={disabled || !confirm}
         onClick={() => {
           void (async () => {
@@ -51,7 +52,7 @@ export function AgentApprovalPanel({
           })();
         }}
       >
-        この計画を承認する
+        内容を確認して承認する
       </button>
       {error && <p role="alert">{error}</p>}
     </section>

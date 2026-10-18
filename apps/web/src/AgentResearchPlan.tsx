@@ -2,19 +2,25 @@ import type { AgentPlan } from "../../../packages/core/kabumaru-agent-schema";
 export function AgentResearchPlan({ plan: p }: { plan: AgentPlan }) {
   return (
     <section className="card">
-      <h2>研究計画と実行予算</h2>
+      <h2>研究計画と処理の上限</h2>
       <p>目的：{p.objective}</p>
       <p>仮説：{p.hypothesis}</p>
       <p>
-        データ締切 {p.cutoff} ／ {p.cohortIds.length}コホート ／{" "}
-        {p.methodIds.length}方式 ／ {p.foldPlanIds.length}fold
+        データ締切 {p.cutoff} ／ 調査データ{p.cohortIds.length}組 ／{" "}
+        {p.methodIds.length}方式 ／ {p.foldPlanIds.length}検証期間
+      </p>
+      <p>
+        調査データ1組は、同じ基準日・取得条件で固定した銘柄群です。同じ銘柄群でも基準日が違えば別の1組です。
       </p>
       <dl>
-        <dt>実験上限</dt>
-        <dd>{p.budget.maxExperiments}回</dd>
-        <dt>コホート上限</dt>
-        <dd>{p.budget.maxCohorts}件</dd>
-        <dt>実行時間上限</dt>
+        <dt>試す回数の上限</dt>
+        <dd>{p.budget.maxExperiments}回（検証期間×方式と最終確認の合計）</dd>
+        <dt>調べるデータのまとまり（上限）</dt>
+        <dd>
+          最大{p.budget.maxCohorts}組 ／ この計画では{p.cohortIds.length}
+          組を使用。銘柄数の上限ではありません。
+        </dd>
+        <dt>処理時間の上限</dt>
         <dd>{p.budget.maxRuntimeSeconds}秒（既存処理単位の境界で停止）</dd>
         <dt>外部API追加取得</dt>
         <dd>0回</dd>

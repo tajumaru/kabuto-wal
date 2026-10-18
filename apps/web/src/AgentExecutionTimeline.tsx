@@ -31,7 +31,7 @@ export function AgentExecutionTimeline({
       {query.error && (
         <p role="alert">履歴を確認できません。{query.error.message}</p>
       )}
-      <ol>
+      <ol className="agent-timeline" tabIndex={0} aria-label="研究の実行履歴">
         {query.data?.records.map((e) => (
           <li key={e.eventId}>
             <p>
