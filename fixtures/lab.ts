@@ -12,7 +12,7 @@ import { labDefaultWeights } from "../packages/core/hunter-experiment-method";
 import { BOTTOM_CONFIG } from "../packages/core/bottom-score";
 import { hash } from "../packages/integrations/adjusted-series";
 // Artificial daily calendar and returns, never a claim about Japanese market performance.
-export async function labFixture(s: Service, count = 12, foldDates = 1) {
+export async function labFixture(s: Service, count = 12, foldDates = 1, positiveValidation = false) {
   const firstYear = foldDates === 1 ? 2024 : 2020,
     dates = Array.from({ length: foldDates === 1 ? 366 : 1096 }, (_, i) =>
       new Date(Date.UTC(firstYear, 0, i + 1)).toISOString().slice(0, 10),
@@ -126,7 +126,7 @@ export async function labFixture(s: Service, count = 12, foldDates = 1) {
     for (const [i, m] of members.entries())
       for (const horizon of [1, 5, 20] as const) {
         const actualReturn =
-            ((i % 3 === 0 ? -0.02 : i % 3 === 1 ? 0.03 : 0.01) * horizon) / 5,
+            ((i % 3 === 0 ? positiveValidation&&index<foldDates*2?0.03:-0.02 : i % 3 === 1 ? positiveValidation&&index<foldDates*2?-0.02:0.03 : 0.01) * horizon) / 5,
           body = {
             schemaVersion: 1 as const,
             cohortId,

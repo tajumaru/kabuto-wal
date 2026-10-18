@@ -2,7 +2,8 @@ import type { Service } from "./service";
 import { agentPlanInputSchema,agentPlanSchema,type AgentPlan,type AgentTool } from "../../../packages/core/kabumaru-agent-schema";
 import { readNotebook } from "./kabumaru-notebook";
 import { notebookCatalog } from "./kabumaru-notebook-index";
-import { readLabMethod,readLabPlan } from "./hunter-experiment";
+import { readLabMethod,labBase } from "./hunter-experiment";
+import { validateAgentFolds } from "../../../packages/core/kabumaru-agent-walk-forward";
 import { verifyLabPlanInputs } from "./hunter-experiment-temporal";
 import { agentBase,agentHash,agentState,appendAgentEvent,readAgentPlan } from "./kabumaru-agent-audit";
 import { validateAgentDag } from "../../../packages/core/kabumaru-agent-policy";
@@ -11,6 +12,8 @@ export async function proposeAgentPlan(s:Service,sessionId:string,raw:unknown,no
  const q=agentPlanInputSchema.parse(raw),state=await agentState(s,sessionId);if(["running","approved","paused"].includes(state.status))throw Error("実行・承認済み計画を拡張できません。新しいセッションを作成してください");
  const folds=[];for(const id of [...new Set(q.foldPlanIds)])folds.push(await verifyLabPlanInputs(s,id));folds.sort((a,b)=>a.validation.from.localeCompare(b.validation.from));
  for(let i=0;i<folds.length;i++){const p=folds[i];if(p.createdAt>now.toISOString())throw Error("未来の検証計画です");if(i&&folds[i-1].validation.to>=p.validation.from)throw Error("foldのValidation期間が重複・逆順です");if(p.test.from!==folds[0].test.from||p.test.to!==folds[0].test.to||p.validation.to>=folds[0].test.from)throw Error("全foldの選択後に共通の最終Testを確保してください");}
+ validateAgentFolds(folds);
+ if(folds.length)for(const e of [...await s.store.all<{mode:string;from:string;to:string}>(`${labBase}/exposures`),...await s.store.all<{mode:string;from:string;to:string}>(`${labBase}/observed`)])if(e.mode===state.original.mode&&e.from<=folds[0].test.to&&e.to>=folds[0].test.from)throw Error("参照済みの期間をエージェントの未使用Testに再利用できません");
  if(folds.length&&!q.methodIds.length||!folds.length&&q.methodIds.length)throw Error("実験にはfoldと方式の両方が必要です");
  const sourceHashes:Record<string,string>={},cohortIds=[...new Set(folds.flatMap(p=>p.cohortIds))].sort(),methodIds=[...new Set(q.methodIds)].sort();for(const f of folds)sourceHashes[`fold/${f.planId}`]=agentHash(f);
  for(const id of methodIds){const m=await readLabMethod(s,id);if(m.createdAt>now.toISOString())throw Error("未来の実験方式です");if(m.proposalId){const {readLabProposal}=await import("./hunter-experiment-hypotheses");const proposal=await readLabProposal(s,m.proposalId);if(folds.some(f=>f.planId!==proposal.planId))throw Error("単一foldの提案方式を他foldの未来情報として流用できません。各Trainingで独立生成してください");}sourceHashes[`method/${id}`]=agentHash(m);}
