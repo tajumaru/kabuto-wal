@@ -1,12 +1,14 @@
 type Evidence = { recordId: string; text: string };
 import { isCauseQuestion } from "../../../packages/core/question";
+import { ScoutAnswer } from "./ScoutAnswer";
 import { isPredictionEvidence, readablePredictionEvidence } from "../../../packages/core/chat-evidence";
 export function readableEvidence(text: string) {
   return readablePredictionEvidence(text).replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g, (value) =>
     new Date(value).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) + " JST",
   ).replace(/([\d,]+\.\d+)円/g, (_, price: string) => Math.round(Number(price.replaceAll(",", ""))).toLocaleString("ja-JP") + "円");
 }
-export function ChatAnswer({ event }: { event: { question?: string; answer: string; model: string; search: string; error?: string; evidence: Evidence[] } }) {
+export function ChatAnswer({ event }: { event: { question?: string; answer: string; model: string; search: string; error?: string; evidence: Evidence[];scout?:unknown } }) {
+  if(event.scout)return <ScoutAnswer data={event.scout}/>;
   const comparison = event.evidence.find((r) => r.recordId.startsWith("btc-compare-"));
   const values = comparison?.text.match(/(\d{4}-\d{2}-\d{2})→(\d{4}-\d{2}-\d{2})、株価 (-?\d+(?:\.\d+)?)％、BTC (-?\d+(?:\.\d+)?)％/);
   const price = event.evidence.find((r) => /^btc-\d+$/.test(r.recordId));

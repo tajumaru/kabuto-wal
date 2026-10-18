@@ -3,6 +3,9 @@ import { registerHunterCohorts } from "./hunter-cohort";
 import { registerKabumaruNotebook } from "./kabumaru-notebook";
 import { registerHunterLab } from "./hunter-experiment-api";
 import { registerKabumaruAgent } from "./kabumaru-agent-api";
+import { parseScoutIntent } from "../../../packages/core/bottom-scout-intent";
+import { scoutChat } from "./bottom-scout-chat";
+import { registerScoutMemory,saveScoutMemory } from "./bottom-scout-memory";
 import { searchDejavuContext } from "./hunter-research";
 import { notifyDejavu, saveDejavu, recallDejavu } from "./dejavu";
 import { registerDejavuJournal } from "./dejavu-journal";
@@ -105,6 +108,7 @@ export async function createApp(
   registerKabumaruNotebook(app, service);
   registerHunterLab(app, service);
   registerKabumaruAgent(app, service, allowedOrigins);
+  registerScoutMemory(app,service,allowedOrigins);
   app.get("/api/auth/challenge", async () =>
     service.store.lock(async () => {
       const nonce = randomBytes(32).toString("hex"),
@@ -215,19 +219,18 @@ export async function createApp(
   app.get("/api/assistant", async () =>
     service.store.lock(() => collectNotices(service)),
   );
-  app.post("/api/assistant/save-chat", async (req) =>
-    service.store.lock(async () => {
+  app.post("/api/assistant/save-chat", async (req) => {
       const body = z.object({ eventId: id }).parse(req.body);
       const event = await service.store.read(
         `chats/local/${body.eventId}.json`,
       );
-      return service.addMemory(
+      if(event.scout?.reportId) return saveScoutMemory(service,event.scout.reportId);
+      return service.store.lock(()=>service.addMemory(
         `保存した会話\n質問：${event.question}\n回答：${event.answer}\n参照ID：${event.references.join(", ")}`,
         "saved_chat",
         event.providerCode,
-      );
-    }),
-  );
+      ));
+    });
   app.get("/api/watchlist", async () => service.watch());
   app.post("/api/watchlist", async (req) =>
     service.store.lock(async () => {
@@ -484,17 +487,16 @@ export async function createApp(
       };
     }),
   );
-  app.post("/api/chat", async (req) =>
-    service.store.lock(async () => {
+  app.post("/api/chat", async (req) => {
       const b = z
         .object({
           question: z.string().min(1).max(3000),
           code: code.optional(),
         })
         .parse(req.body);
-      return service.chat(b.question, b.code);
-    }),
-  );
+      if (parseScoutIntent(b.question,b.code)) return scoutChat(service,b.question,b.code);
+      return service.store.lock(()=>service.chat(b.question, b.code));
+    });
   app.post("/api/jobs/fetch", async () =>
     service.store.lock(() => service.job({ syncMemory: false })),
   );

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { StockPicker } from "./StockPicker";
+import { ScoutAnswer } from "./ScoutAnswer";
+import { parseScoutIntent } from "../../../packages/core/bottom-scout-intent";
 import { displayStockCode } from "./stock-search";
 import type {
   AssistantNotice,
@@ -129,7 +131,7 @@ export function Kabumaru({ authenticated }: { authenticated: boolean }) {
     setError("");
     setPose("analyze");
     try {
-      if (code) await request("/stocks/" + code + "/features");
+      if (code && !parseScoutIntent(question,code)) await request("/stocks/" + code + "/features");
       if (!mounted.current) return;
       setPose("thinking");
       const event = await request("/chat", {
@@ -251,12 +253,12 @@ export function Kabumaru({ authenticated }: { authenticated: boolean }) {
                     すべて既読にする
                   </button>
                 </div>
-                {notices.length === 0 && (
+                {unread.length === 0 && (
                   <p>
-                    まだ通知はありません。株価未取得の場合、相場のお知らせは作りません。
+                    未読のお知らせはありません。
                   </p>
                 )}
-                {notices.map((n) => (
+                {unread.map((n) => (
                   <article
                     key={n.recordId}
                     className={"kabumaru-notice " + n.pose}
@@ -306,7 +308,7 @@ export function Kabumaru({ authenticated }: { authenticated: boolean }) {
                 {events.map((event) => (
                   <article className="kabumaru-message" key={event.recordId}>
                     <h4>{event.question}</h4>
-                    <p>{event.answer}</p>
+                    {event.scout ? <ScoutAnswer data={event.scout} onNavigate={close}/> : <p>{event.answer}</p>}
                     <small>
                       {event.model} ·{" "}
                       {event.search === "memwal-semantic"
@@ -323,7 +325,7 @@ export function Kabumaru({ authenticated }: { authenticated: boolean }) {
                         </div>
                       ))}
                     </details>
-                    <button
+                    {!event.scout&&<button
                       disabled={saving === event.recordId}
                       onClick={async () => {
                         setSaving(event.recordId);
@@ -345,7 +347,7 @@ export function Kabumaru({ authenticated }: { authenticated: boolean }) {
                       }}
                     >
                       この会話を記憶に保存
-                    </button>
+                    </button>}
                   </article>
                 ))}
                 {busy && (
