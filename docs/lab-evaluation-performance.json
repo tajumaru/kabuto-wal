@@ -1,0 +1,38 @@
+{
+  "baseline": "a2768e3",
+  "mode": "demo fixture; no external network",
+  "symbols": 4,
+  "horizons": [
+    1,
+    5,
+    20
+  ],
+  "samples": [
+    {
+      "oldMs": 560.41,
+      "newMs": 561.96,
+      "oldReconstructions": 12,
+      "newReconstructions": 4
+    },
+    {
+      "oldMs": 538.48,
+      "newMs": 563.27,
+      "oldReconstructions": 12,
+      "newReconstructions": 4
+    },
+    {
+      "oldMs": 471.71,
+      "newMs": 532.97,
+      "oldReconstructions": 12,
+      "newReconstructions": 4
+    }
+  ],
+  "oldMedianMs": 538.48,
+  "newMedianMs": 561.96,
+  "changePercent": 4.36,
+  "notes": [
+    "同一の一時JSON保存先複製を利用。旧同期全評価と、新ジョブ作成から完了までを比較。",
+    "4銘柄fixture。全市場の実市場性能・メモリ使用量・本番API時間の測定ではありません。",
+    "新方式にはcheckpoint・lease・カレンダー原本保存の負荷を含みます。"
+  ]
+}
