@@ -1,0 +1,177 @@
+{
+  "skills": [
+    "sui-sdks",
+    "frontend-apps",
+    "ptbs",
+    "accessing-data",
+    "sui-ts-sdk-backend"
+  ],
+  "repository": "https://github.com/MystenLabs/skills",
+  "files": [
+    {
+      "path": ".agents/skills/accessing-data/archival.md",
+      "sha256": "c0e98270000cf256b95db87d8be07c52bbdf5288a620b4a62d6a2b881f025156"
+    },
+    {
+      "path": ".agents/skills/accessing-data/evals/evals.json",
+      "sha256": "566ed2981f298442e8b54b2ba9e240d1b17d9751ab9ce2eda47500a42e61e65e"
+    },
+    {
+      "path": ".agents/skills/accessing-data/graphql.md",
+      "sha256": "a770feb6d39453e66a970e25b2a28e15fe28da3e42429047f1ba0e5ac92c4927"
+    },
+    {
+      "path": ".agents/skills/accessing-data/grpc.md",
+      "sha256": "f61036a3aec28b8b876a9e8d5d64d311024f2db191ef7c73525fcdbc96fc2a8c"
+    },
+    {
+      "path": ".agents/skills/accessing-data/indexers.md",
+      "sha256": "17c749144edc9b4a7a92336dfec5a958daf369011ad3f1bd6c709960673c3df6"
+    },
+    {
+      "path": ".agents/skills/accessing-data/SKILL.md",
+      "sha256": "b2bc3645a2f6f9625d2cfd58390ca39b4d31b25640109201f5bac4608404e1e7"
+    },
+    {
+      "path": ".agents/skills/accessing-data/use-cases.md",
+      "sha256": "e8b72a799ceaf1574fa7c0d344a48154d1adddc855a322805ef683820b39ab24"
+    },
+    {
+      "path": ".agents/skills/accessing-data/walrus.md",
+      "sha256": "124e3b051b137354cbe94912553fc97835170e4df5c28fcf992a827b1f1431a0"
+    },
+    {
+      "path": ".agents/skills/frontend-apps/evals/code-evals.json",
+      "sha256": "6c0ced2c129dd874dfa3453c49f6cdcc6a1e4d8d8f6db662fc0ff7e8f5be04c4"
+    },
+    {
+      "path": ".agents/skills/frontend-apps/evals/evals.json",
+      "sha256": "056d06616f469de71079bf0b4cff3396957f91fd4dcd7c4d675515a6d2695f21"
+    },
+    {
+      "path": ".agents/skills/frontend-apps/limitations.md",
+      "sha256": "7e0c6b34cc444602d32639b18f7a31f969ade7f449819dde3e1bd9c0847bfbef"
+    },
+    {
+      "path": ".agents/skills/frontend-apps/non-react.md",
+      "sha256": "7acd316cb763e9255942ca5c1c8954aa9b5651bb49273b8df5db705d2988d521"
+    },
+    {
+      "path": ".agents/skills/frontend-apps/queries.md",
+      "sha256": "0da93d180b643d763246645eae25446483ec1f367df58f23b83bf235d4290935"
+    },
+    {
+      "path": ".agents/skills/frontend-apps/react.md",
+      "sha256": "a7782c02e5535d207d283bf079d9a3693ad7fa40f510ceea345bec0fb293e4f8"
+    },
+    {
+      "path": ".agents/skills/frontend-apps/setup.md",
+      "sha256": "dcfad6fe0ab4d2aaf5da1e6f7507002b42142ea167a660a097d052833daa4be1"
+    },
+    {
+      "path": ".agents/skills/frontend-apps/SKILL.md",
+      "sha256": "366bb5572116f3bc996fdf5d8fb98e2702598c871bf8afbc3ce2a2c26fc35d02"
+    },
+    {
+      "path": ".agents/skills/frontend-apps/transactions.md",
+      "sha256": "daf320d0a8e1f93d0248b806b86fc59f354d052f6336b31680f7f4551c73d612"
+    },
+    {
+      "path": ".agents/skills/ptbs/building.md",
+      "sha256": "dc3d8ffbb2f82d87289043b5f289a91aead8a74537653a850386dd2318d6f1a2"
+    },
+    {
+      "path": ".agents/skills/ptbs/cli.md",
+      "sha256": "8696a6cc6c49d8b2772ca92db56c9b66e765434696ef40d31f377eba803e7b7d"
+    },
+    {
+      "path": ".agents/skills/ptbs/commands.md",
+      "sha256": "5ec8ff4481e7810c880551b688c2bcbf94b56ab1ea6b15b223fea3a13d452dde"
+    },
+    {
+      "path": ".agents/skills/ptbs/evals/code-evals.json",
+      "sha256": "ee447e5638a326654a8db6f030e3f48e56a7a7241540b6f2895bf078e3c3de0b"
+    },
+    {
+      "path": ".agents/skills/ptbs/evals/evals.json",
+      "sha256": "8f7a6c9a093d74cdfacf495237a3b1a69974076f91e527e216bb3ce504c5b51e"
+    },
+    {
+      "path": ".agents/skills/ptbs/fundamentals.md",
+      "sha256": "fb020c24d34321d6ea741d614a004bf7a6c4f1b99f825d8a0afa1bdebc2dc878"
+    },
+    {
+      "path": ".agents/skills/ptbs/SKILL.md",
+      "sha256": "4471b53a801261ea587896551a4bb1b729e6dd2068b621f382aefc78dcf361be"
+    },
+    {
+      "path": ".agents/skills/ptbs/troubleshooting.md",
+      "sha256": "f989ba70cd82d73f05a0fe7b2aafd274344547d8715ff7d01c9c551d1882d41d"
+    },
+    {
+      "path": ".agents/skills/sui-sdks/community.md",
+      "sha256": "91d1a9ec0d73594cddfec3957473eab171de12dd88337215fe4c0c11c4019f8e"
+    },
+    {
+      "path": ".agents/skills/sui-sdks/evals/code-evals.json",
+      "sha256": "a8217b486b1fd3e92e18a3f7e28feb2c7524328a99e386035e4a88c36ef6feb4"
+    },
+    {
+      "path": ".agents/skills/sui-sdks/evals/evals.json",
+      "sha256": "3554c22d98fc6a218dc474c905fc21a3327deacd27e675f5fd43a146f83e39db"
+    },
+    {
+      "path": ".agents/skills/sui-sdks/llm-docs.md",
+      "sha256": "bcb3a076a4c8300933d170c4da0479a5df148e648b9997cde69d418f756c3ed1"
+    },
+    {
+      "path": ".agents/skills/sui-sdks/mapping.md",
+      "sha256": "cf1f9f07b6547f69371a34ac6ad6d33d2fb0f461601239761043cd69ae938a3a"
+    },
+    {
+      "path": ".agents/skills/sui-sdks/rust.md",
+      "sha256": "bacb0cdc02d5e371a7dccbd0e1af0ed7e2dbee9cce121602b66b9498f0d1137d"
+    },
+    {
+      "path": ".agents/skills/sui-sdks/SKILL.md",
+      "sha256": "35b4d61a0ca099ab6b25a46f8721f52b23a149568c2f76841ff5f61b9624f166"
+    },
+    {
+      "path": ".agents/skills/sui-sdks/typescript.md",
+      "sha256": "dcb7e6c7a2d81aad93b63691d5ef38696f3938aa1b209501177837ff269ebf9b"
+    },
+    {
+      "path": ".agents/skills/sui-ts-sdk-backend/bootstrap.md",
+      "sha256": "3382def3ad8724fb12cdf19b273b839a3545b3ecf6f254ab3f8cb8e34dbceaa8"
+    },
+    {
+      "path": ".agents/skills/sui-ts-sdk-backend/evals/evals.json",
+      "sha256": "a781472fd41044b40b5267705cfac640b0af00accdf659970caca6aee419f3dd"
+    },
+    {
+      "path": ".agents/skills/sui-ts-sdk-backend/executors.md",
+      "sha256": "d380d99ca3b83981dcc8e0dbca526b54b5c380c649457989c5f55bca10aa1c34"
+    },
+    {
+      "path": ".agents/skills/sui-ts-sdk-backend/publishing.md",
+      "sha256": "6b0345a149466dee43866871b117fa104d6060850ba3a2d2ead93f4bdd1f0f50"
+    },
+    {
+      "path": ".agents/skills/sui-ts-sdk-backend/signing.md",
+      "sha256": "38bf81f30683def48b221e73596c5e57f40290d8239ad2880b1bd716bb33bbcf"
+    },
+    {
+      "path": ".agents/skills/sui-ts-sdk-backend/SKILL.md",
+      "sha256": "a6af517c9be63e5336ce60813169f188839936f3e3f438cd2a332b766bd9204a"
+    },
+    {
+      "path": ".agents/skills/sui-ts-sdk-backend/sponsorship.md",
+      "sha256": "70c6c521d3e4cc5e55b948a1aacc2b1011e9343d55fa36d4c912922821a60500"
+    },
+    {
+      "path": ".agents/skills/sui-ts-sdk-backend/transactions.md",
+      "sha256": "f8fcfd95c57deb616f0276eee17e989010440f8ab4a1df9b79ab8e5d227ef829"
+    }
+  ],
+  "commit": "e31b38016723e2dcee36161d59c50e028e13b52a"
+}

@@ -1,5 +1,7 @@
 # KABUTO WAL
 
+開発用のSui公式Agent Skillsと実装箇所ごとの利用方針は [AGENTS.md](AGENTS.md)、導入元・適用確認・更新手順は [導入記録](docs/sui-agent-skills.md) を参照してください。
+
 [段階2：日付単位取得と調整系列の基盤](docs/market-foundation.md)を追加しました。`pnpm job:market -- --from YYYY-MM-DD --to YYYY-MM-DD --code 72030`で明示取得・再開し、分割等を考慮した系列を生成できます。実行には本人用live設定と契約範囲の日付が必要です。
 
 個別銘柄の[底打ち研究・段階1](docs/bottom-research.md)を追加しました。`/bottom`で取得済み80営業日の指標・10条件の得点・リスクを確認できます。未校正の研究スコアであり、成功確率ではありません。
