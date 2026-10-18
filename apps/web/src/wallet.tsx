@@ -128,14 +128,21 @@ export async function anchorPrediction(id: string) {
     network: "testnet",
     baseUrl: config.endpoint,
   });
+  // Wallet execution can finish before this RPC can serve the transaction.
+  try {
+    await client.core.waitForTransaction({ digest });
+  } catch {
+    throw Error(
+      "取引結果の確認待ちが完了しませんでした。再送せずtxDigestを確認してください：" + digest,
+    );
+  }
   const verified = await client.core.getTransaction({
     digest,
     include: { effects: true },
   });
-  const transaction =
-    "Transaction" in verified
-      ? verified.Transaction
-      : verified.FailedTransaction;
+  if (verified.FailedTransaction)
+    throw Error(verified.FailedTransaction.status.error?.message || "Sui取引失敗");
+  const transaction = verified.Transaction;
   if (!transaction) throw Error("取引結果未確認");
   const objects = transaction.effects?.changedObjects || [];
   let receiptId: string | undefined;
