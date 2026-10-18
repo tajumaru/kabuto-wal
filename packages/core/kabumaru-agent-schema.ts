@@ -127,7 +127,7 @@ export const agentApprovalSchema = z
     allowedTools: z.array(agentToolSchema),
     permissions: z.array(agentPermissionSchema),
     budget: agentBudgetSchema,
-    actor: z.literal("authenticated-user"),
+    actor: z.enum(["authenticated-user", "demo-user"]),
     failurePolicy: z.literal("pause-transient-stop-permanent-v1"),
   })
   .strict();

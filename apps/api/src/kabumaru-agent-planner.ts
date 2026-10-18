@@ -1,33 +1,291 @@
 import type { Service } from "./service";
-import { agentPlanInputSchema,agentPlanSchema,type AgentPlan,type AgentTool } from "../../../packages/core/kabumaru-agent-schema";
+import {
+  agentPlanInputSchema,
+  agentPlanSchema,
+  type AgentPlan,
+  type AgentTool,
+} from "../../../packages/core/kabumaru-agent-schema";
 import { readNotebook } from "./kabumaru-notebook";
 import { notebookCatalog } from "./kabumaru-notebook-index";
-import { readLabMethod,labBase } from "./hunter-experiment";
+import { readLabMethod, labBase } from "./hunter-experiment";
 import { validateAgentFolds } from "../../../packages/core/kabumaru-agent-walk-forward";
 import { verifyLabPlanInputs } from "./hunter-experiment-temporal";
-import { agentBase,agentHash,agentState,appendAgentEvent,readAgentPlan } from "./kabumaru-agent-audit";
+import {
+  agentBase,
+  agentHash,
+  agentState,
+  appendAgentEvent,
+  readAgentPlan,
+} from "./kabumaru-agent-audit";
 import { validateAgentDag } from "../../../packages/core/kabumaru-agent-policy";
-export async function verifyAgentSources(s:Service,p:AgentPlan){for(const id of p.foldPlanIds)if(agentHash(await verifyLabPlanInputs(s,id))!==p.sourceHashes[`fold/${id}`])throw Error("固定fold入力が変更されました");for(const id of p.methodIds)if(agentHash(await readLabMethod(s,id))!==p.sourceHashes[`method/${id}`])throw Error("固定実験方式が変更されました");for(const id of p.notebookIds){const n=await readNotebook(s,id);if(n.createdAt>p.cutoff||agentHash(n)!==p.sourceHashes[`notebook/${id}`])throw Error("固定研究ノートが変更されました");const evidence=new Set(n.evidence.map(e=>e.evidenceId));if([...evidence].some(e=>!p.evidenceIds.includes(e)))throw Error("Evidenceが計画にありません");}}
-export async function proposeAgentPlan(s:Service,sessionId:string,raw:unknown,now=new Date(),requestId?:string){
- const q=agentPlanInputSchema.parse(raw),state=await agentState(s,sessionId);if(requestId&&state.planId){const old=await readAgentPlan(s,sessionId,state.planId);if(old.requestId===requestId){if(old.requestHash!==agentHash(q))throw Error("冪等キーの入力が変化しています");return old;}}if(["running","approved","paused"].includes(state.status))throw Error("実行・承認済み計画を拡張できません。新しいセッションを作成してください");
- const folds=[];for(const id of [...new Set(q.foldPlanIds)])folds.push(await verifyLabPlanInputs(s,id));folds.sort((a,b)=>a.validation.from.localeCompare(b.validation.from));
- for(let i=0;i<folds.length;i++){const p=folds[i];if(p.createdAt>now.toISOString())throw Error("未来の検証計画です");if(i&&folds[i-1].validation.to>=p.validation.from)throw Error("foldのValidation期間が重複・逆順です");if(p.test.from!==folds[0].test.from||p.test.to!==folds[0].test.to||p.validation.to>=folds[0].test.from)throw Error("全foldの選択後に共通の最終Testを確保してください");}
- validateAgentFolds(folds);
- if(folds.length)for(const e of [...await s.store.all<{mode:string;from:string;to:string}>(`${labBase}/exposures`),...await s.store.all<{mode:string;from:string;to:string}>(`${labBase}/observed`)])if(e.mode===state.original.mode&&e.from<=folds[0].test.to&&e.to>=folds[0].test.from)throw Error("参照済みの期間をエージェントの未使用Testに再利用できません");
- if(folds.length&&!q.methodIds.length||!folds.length&&q.methodIds.length)throw Error("実験にはfoldと方式の両方が必要です");
- const sourceHashes:Record<string,string>={},cohortIds=[...new Set(folds.flatMap(p=>p.cohortIds))].sort(),methodIds=[...new Set(q.methodIds)].sort();for(const f of folds)sourceHashes[`fold/${f.planId}`]=agentHash(f);
- for(const id of methodIds){const m=await readLabMethod(s,id);if(m.createdAt>now.toISOString())throw Error("未来の実験方式です");if(m.proposalId){const {readLabProposal}=await import("./hunter-experiment-hypotheses");const proposal=await readLabProposal(s,m.proposalId);if(folds.some(f=>f.planId!==proposal.planId))throw Error("単一foldの提案方式を他foldの未来情報として流用できません。各Trainingで独立生成してください");}sourceHashes[`method/${id}`]=agentHash(m);}
- const requested=q.notebookIds.length?q.notebookIds:(await notebookCatalog(s)).filter(n=>n.mode===state.original.mode&&n.createdAt<=now.toISOString()).slice(0,20).map(n=>n.notebookId),notes=[];
- for(const id of [...new Set(requested)].sort()){const n=await readNotebook(s,id);if(n.createdAt>now.toISOString()||n.mode!==state.original.mode)throw Error("ノートの時点・区分不一致");if(folds.some(f=>n.createdAt>f.createdAt||n.cohortIds.some(c=>f.partitions[c]!=="training")||n.evaluationIds.some(e=>!f.evaluationIds.includes(e)))){if(q.notebookIds.length)throw Error("全foldのTraining内に限定したノートが必要です");continue;}notes.push(n);sourceHashes[`notebook/${id}`]=agentHash(n);}
- for(const n of notes)for(const id of n.cohortIds)if(!cohortIds.includes(id))cohortIds.push(id);cohortIds.sort();
- if(cohortIds.length>q.budget.maxCohorts||folds.length*methodIds.length+(folds.length?1:0)>q.budget.maxExperiments)throw Error("計画に必要な実験・コホート数が予算を超えています");
- const evidenceIds=[...new Set(notes.flatMap(n=>n.evidence.map(e=>e.evidenceId)))].sort(),steps:AgentPlan["steps"]=[];
- const add=(stepId:string,tool:AgentTool,input:AgentPlan["steps"][number]["input"],dependencies:string[])=>{steps.push({stepId,tool,input,inputHash:agentHash([tool,input,sourceHashes,now.toISOString()]),dependencies,maxAttempts:2});};
- add("inspect","inspect-notebooks",{},[]);add("hypothesis","propose-hypothesis",{},["inspect"]);
- const validations:string[]=[];for(const [i,f] of folds.entries())for(const [j,id] of methodIds.entries()){const key=`validation-${i}-${j}`;add(key,"run-validation",{labPlanId:f.planId,methodId:id,foldIndex:i},["hypothesis"]);validations.push(key);}
- add("compare","compare-folds",{},validations.length?validations:["hypothesis"]);if(folds.length){add("select","select-final-method",{},["compare"]);add("test","run-final-test",{labPlanId:folds.at(-1)!.planId},["select"]);}
- add("evaluate","evaluate-research",{},folds.length?["test"]:["compare"]);add("memory","save-local-memory",{},["evaluate"]);add("attestation","local-attestation",{},["memory"]);
- const previous=state.planId?await readAgentPlan(s,sessionId,state.planId):null,p=agentPlanSchema.parse({schemaVersion:1,planId:"0".repeat(64),sessionId,version:(previous?.version??0)+1,previousPlanId:previous?.planId??null,hypothesis:`${state.original.topic}を固定データで検証する。結果は未確認。`,objective:state.original.objective,topic:state.original.topic,evidenceIds,notebookIds:notes.map(n=>n.notebookId),cohortIds,methodIds,foldPlanIds:folds.map(f=>f.planId),sourceHashes,cutoff:now.toISOString(),steps,budget:q.budget,createdAt:now.toISOString(),methodVersion:"kabumaru-agent-v1",warnings:["外部API追加取得0、MemWal外部同期0、Sui署名・送信0。","実験前に承認が必要。失敗は一時的エラーのみ上限付きで再試行し、恒久エラーでは停止する。","既存draft方式をtestingへ移すことを含む実験実行の承認。本番採点・採用状態は変更しない。","想定処理時間は未計測の入力では推定せず、予算上限と実測を表示する。",...(!folds.length?["検証fold未指定のため読み取り研究。仮説評価はinsufficient-data。"]:[]),...(!notes.length?["Trainingに照合できる研究ノートが不足。デジャヴの未保存特徴量を補完しない。"]:[])]});const {planId:placeholder,...body}=p;void placeholder;p.planId=agentHash(body);validateAgentDag(p);
- if(requestId){p.requestId=requestId;p.requestHash=agentHash(q);const {planId,...identity}=p;void planId;p.planId=agentHash(identity);}
- return s.store.lock(async()=>{const current=await agentState(s,sessionId);if(requestId&&current.planId){const old=await readAgentPlan(s,sessionId,current.planId);if(old.requestId===requestId){if(old.requestHash!==agentHash(q))throw Error("冪等キーの入力が変化しています");return old;}}if(current.eventCount!==state.eventCount)throw Error("計画中にセッションが変更されました");await s.store.write(`${agentBase(sessionId)}/plans/${p.planId}/original.json`,p,true);await appendAgentEvent(s,sessionId,{kind:"plan-proposed",status:"awaiting-approval",planId:p.planId,reason:"固定根拠・DAG・予算を提示。実験は未開始。",references:[p.planId]});return p;});
+export async function verifyAgentSources(s: Service, p: AgentPlan) {
+  for (const id of p.foldPlanIds)
+    if (
+      agentHash(await verifyLabPlanInputs(s, id)) !==
+      p.sourceHashes[`fold/${id}`]
+    )
+      throw Error("固定fold入力が変更されました");
+  for (const id of p.methodIds)
+    if (
+      agentHash(await readLabMethod(s, id)) !== p.sourceHashes[`method/${id}`]
+    )
+      throw Error("固定実験方式が変更されました");
+  for (const id of p.notebookIds) {
+    const n = await readNotebook(s, id);
+    if (
+      n.createdAt > p.cutoff ||
+      agentHash(n) !== p.sourceHashes[`notebook/${id}`]
+    )
+      throw Error("固定研究ノートが変更されました");
+    const evidence = new Set(n.evidence.map((e) => e.evidenceId));
+    if ([...evidence].some((e) => !p.evidenceIds.includes(e)))
+      throw Error("Evidenceが計画にありません");
+  }
+}
+export async function proposeAgentPlan(
+  s: Service,
+  sessionId: string,
+  raw: unknown,
+  now = new Date(),
+  requestId?: string,
+) {
+  const q = agentPlanInputSchema.parse(raw),
+    state = await agentState(s, sessionId);
+  if (requestId && state.planId) {
+    const old = await readAgentPlan(s, sessionId, state.planId);
+    if (old.requestId === requestId) {
+      if (old.requestHash !== agentHash(q))
+        throw Error("冪等キーの入力が変化しています");
+      return old;
+    }
+  }
+  if (["running", "approved", "paused"].includes(state.status))
+    throw Error(
+      "実行・承認済み計画を拡張できません。新しいセッションを作成してください",
+    );
+  const folds = [];
+  for (const id of [...new Set(q.foldPlanIds)])
+    folds.push(await verifyLabPlanInputs(s, id));
+  folds.sort((a, b) => a.validation.from.localeCompare(b.validation.from));
+  for (let i = 0; i < folds.length; i++) {
+    const p = folds[i];
+    if (p.createdAt > now.toISOString()) throw Error("未来の検証計画です");
+    if (i && folds[i - 1].validation.to >= p.validation.from)
+      throw Error("foldのValidation期間が重複・逆順です");
+    if (
+      p.test.from !== folds[0].test.from ||
+      p.test.to !== folds[0].test.to ||
+      p.validation.to >= folds[0].test.from
+    )
+      throw Error("全foldの選択後に共通の最終Testを確保してください");
+  }
+  validateAgentFolds(folds);
+  if (folds.length)
+    for (const e of [
+      ...(await s.store.all<{ mode: string; from: string; to: string }>(
+        `${labBase}/exposures`,
+      )),
+      ...(await s.store.all<{ mode: string; from: string; to: string }>(
+        `${labBase}/observed`,
+      )),
+    ])
+      if (
+        e.mode === state.original.mode &&
+        e.from <= folds[0].test.to &&
+        e.to >= folds[0].test.from
+      )
+        throw Error(
+          "参照済みの期間をエージェントの未使用Testに再利用できません",
+        );
+  if (
+    (folds.length && !q.methodIds.length) ||
+    (!folds.length && q.methodIds.length)
+  )
+    throw Error("実験にはfoldと方式の両方が必要です");
+  const sourceHashes: Record<string, string> = {},
+    cohortIds = [...new Set(folds.flatMap((p) => p.cohortIds))].sort(),
+    methodIds = [...new Set(q.methodIds)].sort();
+  for (const f of folds) sourceHashes[`fold/${f.planId}`] = agentHash(f);
+  for (const id of methodIds) {
+    const m = await readLabMethod(s, id);
+    if (m.createdAt > now.toISOString()) throw Error("未来の実験方式です");
+    if (m.proposalId) {
+      const { readLabProposal } =
+        await import("./hunter-experiment-hypotheses");
+      const proposal = await readLabProposal(s, m.proposalId);
+      if (folds.some((f) => f.planId !== proposal.planId))
+        throw Error(
+          "単一foldの提案方式を他foldの未来情報として流用できません。各Trainingで独立生成してください",
+        );
+    }
+    sourceHashes[`method/${id}`] = agentHash(m);
+  }
+  const requested = q.notebookIds.length
+      ? q.notebookIds
+      : (await notebookCatalog(s))
+          .filter(
+            (n) =>
+              n.mode === state.original.mode &&
+              n.createdAt <= now.toISOString(),
+          )
+          .slice(0, 20)
+          .map((n) => n.notebookId),
+    notes = [];
+  for (const id of [...new Set(requested)].sort()) {
+    const n = await readNotebook(s, id);
+    if (n.createdAt > now.toISOString() || n.mode !== state.original.mode)
+      throw Error("ノートの時点・区分不一致");
+    if (
+      folds.some(
+        (f) =>
+          n.createdAt > f.createdAt ||
+          n.cohortIds.some((c) => f.partitions[c] !== "training") ||
+          n.evaluationIds.some((e) => !f.evaluationIds.includes(e)),
+      )
+    ) {
+      if (q.notebookIds.length)
+        throw Error("全foldのTraining内に限定したノートが必要です");
+      continue;
+    }
+    notes.push(n);
+    sourceHashes[`notebook/${id}`] = agentHash(n);
+  }
+  for (const n of notes)
+    for (const id of n.cohortIds)
+      if (!cohortIds.includes(id)) cohortIds.push(id);
+  cohortIds.sort();
+  if (
+    cohortIds.length > q.budget.maxCohorts ||
+    folds.length * methodIds.length + (folds.length ? 1 : 0) >
+      q.budget.maxExperiments
+  )
+    throw Error("計画に必要な実験・コホート数が予算を超えています");
+  const evidenceIds = [
+      ...new Set(notes.flatMap((n) => n.evidence.map((e) => e.evidenceId))),
+    ].sort(),
+    steps: AgentPlan["steps"] = [];
+  const add = (
+    stepId: string,
+    tool: AgentTool,
+    input: AgentPlan["steps"][number]["input"],
+    dependencies: string[],
+  ) => {
+    steps.push({
+      stepId,
+      tool,
+      input,
+      inputHash: agentHash([tool, input, sourceHashes, now.toISOString()]),
+      dependencies,
+      maxAttempts: 2,
+    });
+  };
+  add("inspect", "inspect-notebooks", {}, []);
+  add("hypothesis", "propose-hypothesis", {}, ["inspect"]);
+  const validations: string[] = [];
+  for (const [i, f] of folds.entries())
+    for (const [j, id] of methodIds.entries()) {
+      const key = `validation-${i}-${j}`;
+      add(
+        key,
+        "run-validation",
+        { labPlanId: f.planId, methodId: id, foldIndex: i },
+        ["hypothesis"],
+      );
+      validations.push(key);
+    }
+  add(
+    "compare",
+    "compare-folds",
+    {},
+    validations.length ? validations : ["hypothesis"],
+  );
+  if (folds.length) {
+    add("select", "select-final-method", {}, ["compare"]);
+    add("test", "run-final-test", { labPlanId: folds.at(-1)!.planId }, [
+      "select",
+    ]);
+  }
+  add(
+    "evaluate",
+    "evaluate-research",
+    {},
+    folds.length ? ["test"] : ["compare"],
+  );
+  add("memory", "save-local-memory", {}, ["evaluate"]);
+  add("attestation", "local-attestation", {}, ["memory"]);
+  const previous = state.planId
+      ? await readAgentPlan(s, sessionId, state.planId)
+      : null,
+    p = agentPlanSchema.parse({
+      schemaVersion: 1,
+      planId: "0".repeat(64),
+      sessionId,
+      version: (previous?.version ?? 0) + 1,
+      previousPlanId: previous?.planId ?? null,
+      hypothesis: `${state.original.topic}を固定データで検証する。結果は未確認。`,
+      objective: state.original.objective,
+      topic: state.original.topic,
+      evidenceIds,
+      notebookIds: notes.map((n) => n.notebookId),
+      cohortIds,
+      methodIds,
+      foldPlanIds: folds.map((f) => f.planId),
+      sourceHashes,
+      cutoff: now.toISOString(),
+      steps,
+      budget: q.budget,
+      createdAt: now.toISOString(),
+      methodVersion: "kabumaru-agent-v1",
+      warnings: [
+        "外部API追加取得0、MemWal外部同期0、Sui署名・送信0。",
+        "実験前に承認が必要。失敗は一時的エラーのみ上限付きで再試行し、恒久エラーでは停止する。",
+        "既存draft方式をtestingへ移すことを含む実験実行の承認。本番採点・採用状態は変更しない。",
+        "想定処理時間は未計測の入力では推定せず、予算上限と実測を表示する。",
+        ...(!folds.length
+          ? ["検証fold未指定のため読み取り研究。仮説評価はinsufficient-data。"]
+          : []),
+        ...(!notes.length
+          ? [
+              "Trainingに照合できる研究ノートが不足。デジャヴの未保存特徴量を補完しない。",
+            ]
+          : []),
+      ],
+    });
+  const { planId: placeholder, ...body } = p;
+  void placeholder;
+  p.planId = agentHash(body);
+  validateAgentDag(p);
+  if (requestId) {
+    p.requestId = requestId;
+    p.requestHash = agentHash(q);
+    const { planId, ...identity } = p;
+    void planId;
+    p.planId = agentHash(identity);
+  }
+  return s.store.lock(async () => {
+    const current = await agentState(s, sessionId);
+    if (requestId && current.planId) {
+      const old = await readAgentPlan(s, sessionId, current.planId);
+      if (old.requestId === requestId) {
+        if (old.requestHash !== agentHash(q))
+          throw Error("冪等キーの入力が変化しています");
+        return old;
+      }
+    }
+    if (current.eventCount !== state.eventCount)
+      throw Error("計画中にセッションが変更されました");
+    await s.store.write(
+      `${agentBase(sessionId)}/plans/${p.planId}/original.json`,
+      p,
+      true,
+    );
+    await appendAgentEvent(s, sessionId, {
+      kind: "plan-proposed",
+      status: "awaiting-approval",
+      planId: p.planId,
+      reason: "固定根拠・DAG・予算を提示。実験は未開始。",
+      references: [p.planId],
+    });
+    return p;
+  });
 }

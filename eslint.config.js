@@ -8,11 +8,14 @@ export default ts.config(
       "data/**",
       "playwright-report/**",
       "test-results/**",
+      ".move-cache/**",
+      "output/**",
     ],
   },
   js.configs.recommended,
   ...ts.configs.recommended,
   {
+    languageOptions: { parserOptions: { tsconfigRootDir: import.meta.dirname } },
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "no-undef": "off",

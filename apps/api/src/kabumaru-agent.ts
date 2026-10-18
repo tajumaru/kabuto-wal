@@ -1,16 +1,124 @@
 import { z } from "zod";
 import type { Service } from "./service";
 import { cohortIdSchema } from "../../../packages/core/hunter-cohort-schema";
-import { agentApprovalSchema,agentBudgetSchema,agentToolSchema,agentPermissionSchema,type AgentPlan } from "../../../packages/core/kabumaru-agent-schema";
-import { agentBase,agentHash,agentState,readAgentPlan,appendAgentEvent } from "./kabumaru-agent-audit";
+import {
+  agentApprovalSchema,
+  agentBudgetSchema,
+  agentToolSchema,
+  agentPermissionSchema,
+  type AgentPlan,
+} from "../../../packages/core/kabumaru-agent-schema";
+import {
+  agentBase,
+  agentHash,
+  agentState,
+  readAgentPlan,
+  appendAgentEvent,
+} from "./kabumaru-agent-audit";
 import { verifyAgentSources } from "./kabumaru-agent-planner";
-import { assertAgentPermission,agentToolPermissions } from "../../../packages/core/kabumaru-agent-policy";
-export const agentApprovalInputSchema=z.object({planId:cohortIdSchema,planHash:cohortIdSchema,confirm:z.literal(true),allowedTools:z.array(agentToolSchema),permissions:z.array(agentPermissionSchema),budget:agentBudgetSchema,failurePolicy:z.literal("pause-transient-stop-permanent-v1")}).strict();
-export async function approveAgentPlan(s:Service,sessionId:string,raw:unknown){const q=agentApprovalInputSchema.parse(raw),p=await readAgentPlan(s,sessionId,q.planId);await verifyAgentSources(s,p);
- if(q.planHash!==agentHash(p)||agentHash(q.budget)!==agentHash(p.budget)||agentHash([...new Set(q.allowedTools)].sort())!==agentHash([...new Set(p.steps.map(t=>t.tool))].sort()))throw Error("計画hash・ツール・予算の承認内容が一致しません");
- const required=[...new Set(p.steps.map(t=>agentToolPermissions[t.tool]))].sort();if(agentHash([...new Set(q.permissions)].sort())!==agentHash(required))throw Error("計画に必要な権限だけを承認してください");
- return s.store.lock(async()=>{const state=await agentState(s,sessionId);if(state.planId!==p.planId)throw Error("現在の計画が変更されています");const key=`${agentBase(sessionId)}/plans/${p.planId}/approval/original.json`,old=await s.store.read(key,null);if(old)return readAgentApproval(s,p);
- if(state.status!=="awaiting-approval")throw Error("承認待ちの計画が必要です");const row=agentApprovalSchema.parse({schemaVersion:1,approvalId:"0".repeat(64),sessionId,planId:p.planId,planHash:q.planHash,approvedAt:new Date().toISOString(),allowedTools:q.allowedTools,permissions:q.permissions,budget:q.budget,actor:"authenticated-user",failurePolicy:q.failurePolicy}),{approvalId:placeholder,...body}=row;void placeholder;row.approvalId=agentHash(body);await s.store.write(key,row,true);await appendAgentEvent(s,sessionId,{kind:"approved",status:"approved",planId:p.planId,reason:s.mode==="demo"?"DEMO利用者の明示操作で承認（ウォレット認証対象外）":"認証済み利用者の明示操作で承認",references:[row.approvalId],details:{externalWrites:0,suiTransactions:0,jquantsRequests:0}});return row;});
+import {
+  assertAgentPermission,
+  agentToolPermissions,
+} from "../../../packages/core/kabumaru-agent-policy";
+export const agentApprovalInputSchema = z
+  .object({
+    planId: cohortIdSchema,
+    planHash: cohortIdSchema,
+    confirm: z.literal(true),
+    allowedTools: z.array(agentToolSchema),
+    permissions: z.array(agentPermissionSchema),
+    budget: agentBudgetSchema,
+    failurePolicy: z.literal("pause-transient-stop-permanent-v1"),
+  })
+  .strict();
+export async function approveAgentPlan(
+  s: Service,
+  sessionId: string,
+  raw: unknown,
+) {
+  const q = agentApprovalInputSchema.parse(raw),
+    p = await readAgentPlan(s, sessionId, q.planId);
+  await verifyAgentSources(s, p);
+  if (
+    q.planHash !== agentHash(p) ||
+    agentHash(q.budget) !== agentHash(p.budget) ||
+    agentHash([...new Set(q.allowedTools)].sort()) !==
+      agentHash([...new Set(p.steps.map((t) => t.tool))].sort())
+  )
+    throw Error("計画hash・ツール・予算の承認内容が一致しません");
+  const required = [
+    ...new Set(p.steps.map((t) => agentToolPermissions[t.tool])),
+  ].sort();
+  if (agentHash([...new Set(q.permissions)].sort()) !== agentHash(required))
+    throw Error("計画に必要な権限だけを承認してください");
+  return s.store.lock(async () => {
+    const state = await agentState(s, sessionId);
+    if (state.planId !== p.planId) throw Error("現在の計画が変更されています");
+    const key = `${agentBase(sessionId)}/plans/${p.planId}/approval/original.json`,
+      old = await s.store.read(key, null);
+    if (old) return readAgentApproval(s, p);
+    if (state.status !== "awaiting-approval")
+      throw Error("承認待ちの計画が必要です");
+    const row = agentApprovalSchema.parse({
+        schemaVersion: 1,
+        approvalId: "0".repeat(64),
+        sessionId,
+        planId: p.planId,
+        planHash: q.planHash,
+        approvedAt: new Date().toISOString(),
+        allowedTools: q.allowedTools,
+        permissions: q.permissions,
+        budget: q.budget,
+        actor: s.mode === "demo" ? "demo-user" : "authenticated-user",
+        failurePolicy: q.failurePolicy,
+      }),
+      { approvalId: placeholder, ...body } = row;
+    void placeholder;
+    row.approvalId = agentHash(body);
+    await s.store.write(key, row, true);
+    await appendAgentEvent(s, sessionId, {
+      kind: "approved",
+      status: "approved",
+      planId: p.planId,
+      reason:
+        s.mode === "demo"
+          ? "DEMO利用者の明示操作で承認（ウォレット認証対象外）"
+          : "認証済み利用者の明示操作で承認",
+      references: [row.approvalId],
+      details: { externalWrites: 0, suiTransactions: 0, jquantsRequests: 0 },
+    });
+    return row;
+  });
 }
-export async function readAgentApproval(s:Service,p:AgentPlan){const a=agentApprovalSchema.parse(await s.store.read(`${agentBase(p.sessionId)}/plans/${p.planId}/approval/original.json`,null)),{approvalId,...body}=a;if(agentHash(body)!==approvalId||a.planHash!==agentHash(p)||a.planId!==p.planId||a.sessionId!==p.sessionId)throw Error("承認原本と計画hashが一致しません");for(const step of p.steps)assertAgentPermission(p,a,step.tool);return a;}
-export async function authorizeAgentExecution(s:Service,sessionId:string){const state=await agentState(s,sessionId);if(!state.planId||!["approved","paused","failed","running","completed"].includes(state.status))throw Error("利用者の承認前に研究を実行できません");const plan=await readAgentPlan(s,sessionId,state.planId),approval=await readAgentApproval(s,plan);await verifyAgentSources(s,plan);return {state,plan,approval};}
+export async function readAgentApproval(s: Service, p: AgentPlan) {
+  const a = agentApprovalSchema.parse(
+      await s.store.read(
+        `${agentBase(p.sessionId)}/plans/${p.planId}/approval/original.json`,
+        null,
+      ),
+    ),
+    { approvalId, ...body } = a;
+  if (
+    agentHash(body) !== approvalId ||
+    a.planHash !== agentHash(p) ||
+    a.planId !== p.planId ||
+    a.sessionId !== p.sessionId
+  )
+    throw Error("承認原本と計画hashが一致しません");
+  for (const step of p.steps) assertAgentPermission(p, a, step.tool);
+  return a;
+}
+export async function authorizeAgentExecution(s: Service, sessionId: string) {
+  const state = await agentState(s, sessionId);
+  if (
+    !state.planId ||
+    !["approved", "paused", "failed", "running", "completed"].includes(
+      state.status,
+    )
+  )
+    throw Error("利用者の承認前に研究を実行できません");
+  const plan = await readAgentPlan(s, sessionId, state.planId),
+    approval = await readAgentApproval(s, plan);
+  await verifyAgentSources(s, plan);
+  return { state, plan, approval };
+}
