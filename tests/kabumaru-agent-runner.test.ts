@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { Service } from "../apps/api/src/service";
+import { saveAgentMemory,syncAgentMemory,recallAgentMemory,agentNamespace } from "../apps/api/src/kabumaru-agent-memory";
 import {
   createAgentSession,
   agentHash,
@@ -44,6 +45,7 @@ export async function approvedReadSession(s: Service, maxRuntimeSeconds = 30) {
   });
   return { session, plan };
 }
+it("MemWalは初期OFFで、別操作のSDKモック同期・原本照合・削除抑止を維持する",async()=>{const root=await mkdtemp(path.join(os.tmpdir(),"agent-memory-")),s=new Service(root,"research",false),texts:string[]=[];const provider={remember:vi.fn(async(text:string)=>{texts.push(text);return {job_id:"agent-job"};}),waitForRememberJob:vi.fn(async()=>({blob_id:"agent-blob",namespace:agentNamespace("research")})),recall:vi.fn(async()=>({results:texts.map(text=>({text,distance:0}))}))};vi.spyOn(s,"memoryProvider").mockResolvedValue(provider);try{const {session}=await approvedReadSession(s);expect((await runAgentSession(s,session.sessionId)).status).toBe("completed");const memory=await saveAgentMemory(s,session.sessionId);expect(provider.remember).not.toHaveBeenCalled();vi.stubEnv("ALLOW_MARKET_DATA_TO_MEMWAL","false");vi.stubEnv("JQUANTS_MEMWAL_RIGHTS_CONFIRMED","true");await expect(syncAgentMemory(s,session.sessionId,true)).rejects.toThrow("明示許可");vi.stubEnv("ALLOW_MARKET_DATA_TO_MEMWAL","true");await syncAgentMemory(s,session.sessionId,true);expect(provider.remember).toHaveBeenCalledTimes(1);expect(texts[0]).not.toContain("sourceRevisionHashes");expect((await recallAgentMemory(s,session.sessionId,true)).records).toHaveLength(1);await s.store.write(`sync/${memory.recordId}.json`,{status:"deleted",directWalrusDeletion:true});expect((await saveAgentMemory(s,session.sessionId)).status).toBe("suppressed");expect((await recallAgentMemory(s,session.sessionId,true)).records).toHaveLength(0);await expect(syncAgentMemory(s,session.sessionId,true)).rejects.toThrow("削除");expect(provider.remember).toHaveBeenCalledTimes(1);}finally{vi.unstubAllEnvs();vi.restoreAllMocks();await rm(root,{recursive:true,force:true});}});
 it("承認済み研究を一段ずつ再開し、累積予算・冪等結果・監査履歴を維持する", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "agent-run-")),
     s = new Service(root, "demo", false),
