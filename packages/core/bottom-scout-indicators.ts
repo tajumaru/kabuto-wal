@@ -1,9 +1,85 @@
 import { ema, rsi, sma } from "./bottom-features";
-export type ScoutDaily={date:string;open:number;high:number;low:number;close:number;volume:number};
-export function bollinger(closes:number[],period=20){const middle=sma(closes,period);return middle.map((m,i)=>{if(m===null)return null;const deviation=Math.sqrt(closes.slice(i-period+1,i+1).reduce((sum,v)=>sum+(v-m)**2,0)/period);return {middle:m,upper:m+2*deviation,lower:m-2*deviation};});}
-export function scoutIndicators(rows:ScoutDaily[]){
- if(rows.length!==80||rows.some((r,i)=>![r.open,r.high,r.low,r.close].every(v=>Number.isFinite(v)&&v>0)||!Number.isFinite(r.volume)||r.volume<0||r.high<Math.max(r.open,r.close)||r.low>Math.min(r.open,r.close)||i>0&&rows[i-1].date>=r.date))throw Error("連続した80営業日の有効な調整済み日足が必要です");
- const close=rows.map(r=>r.close),rs=rsi(close,14),ma5=sma(close,5),ma25=sma(close,25),ma75=sma(close,75),fast=ema(close,12),slow=ema(close,26),macd=close.slice(25).map((_,i)=>fast[i+25]!-slow[i+25]!),signal=ema(macd,9),hist=macd.map((v,i)=>signal[i]===null?null:v-signal[i]!),bands=bollinger(close),last=rows[79],low20=Math.min(...rows.slice(-20).map(r=>r.low)),previousVolume=rows.slice(-21,-1).reduce((s,r)=>s+r.volume,0)/20;
- return {rsi14:rs[79]!,rsiPrevious3:rs[76]!,minRsi5:Math.min(...rs.slice(-5).map(v=>v!)),macd:macd.at(-1)!,signal:signal.at(-1)!,histogram:hist.at(-1)!,histogramPrevious:hist.at(-2)!,histogramPrevious2:hist.at(-3)!,sma5:ma5[79]!,sma5Previous:ma5[78]!,sma25:ma25[79]!,sma25Previous3:ma25[76]!,sma75:ma75[79]!,sma75Previous3:ma75[76]!,bollinger:bands[79]!,bandReentry:close[79]>bands[79]!.lower&&rows.slice(-5).some((r,i)=>r.low<=bands[75+i]!.lower),volumeRatio:previousVolume>0?last.volume/previousVolume:null,low20,lowAge:rows.slice(-20).reverse().findIndex(r=>r.low===low20),priorLow5:Math.min(...rows.slice(-6,-1).map(r=>r.low)),drawdown75:last.close/Math.max(...close.slice(-75))-1,close:last.close,previousClose:close[78],low:last.low,volume:last.volume};
+export type ScoutDaily = {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+export function bollinger(closes: number[], period = 20) {
+  const middle = sma(closes, period);
+  return middle.map((m, i) => {
+    if (m === null) return null;
+    const deviation = Math.sqrt(
+      closes
+        .slice(i - period + 1, i + 1)
+        .reduce((sum, v) => sum + (v - m) ** 2, 0) / period,
+    );
+    return { middle: m, upper: m + 2 * deviation, lower: m - 2 * deviation };
+  });
 }
-export type ScoutIndicators=ReturnType<typeof scoutIndicators>;
+export function scoutIndicators(rows: ScoutDaily[]) {
+  if (
+    rows.length !== 80 ||
+    rows.some(
+      (r, i) =>
+        ![r.open, r.high, r.low, r.close].every(
+          (v) => Number.isFinite(v) && v > 0,
+        ) ||
+        !Number.isFinite(r.volume) ||
+        r.volume < 0 ||
+        r.high < Math.max(r.open, r.close) ||
+        r.low > Math.min(r.open, r.close) ||
+        (i > 0 && rows[i - 1].date >= r.date),
+    )
+  )
+    throw Error("連続した80営業日の有効な調整済み日足が必要です");
+  const close = rows.map((r) => r.close),
+    rs = rsi(close, 14),
+    ma5 = sma(close, 5),
+    ma25 = sma(close, 25),
+    ma75 = sma(close, 75),
+    fast = ema(close, 12),
+    slow = ema(close, 26),
+    macd = close.slice(25).map((_, i) => fast[i + 25]! - slow[i + 25]!),
+    signal = ema(macd, 9),
+    hist = macd.map((v, i) => (signal[i] === null ? null : v - signal[i]!)),
+    bands = bollinger(close),
+    last = rows[79],
+    low20 = Math.min(...rows.slice(-20).map((r) => r.low)),
+    previousVolume = rows.slice(-21, -1).reduce((s, r) => s + r.volume, 0) / 20;
+  return {
+    rsi14: rs[79]!,
+    rsiPrevious3: rs[76]!,
+    minRsi5: Math.min(...rs.slice(-5).map((v) => v!)),
+    macd: macd.at(-1)!,
+    signal: signal.at(-1)!,
+    histogram: hist.at(-1)!,
+    histogramPrevious: hist.at(-2)!,
+    histogramPrevious2: hist.at(-3)!,
+    sma5: ma5[79]!,
+    sma5Previous: ma5[78]!,
+    sma25: ma25[79]!,
+    sma25Previous3: ma25[76]!,
+    sma75: ma75[79]!,
+    sma75Previous3: ma75[76]!,
+    bollinger: bands[79]!,
+    bandReentry:
+      close[79] > bands[79]!.lower &&
+      rows.slice(-5).some((r, i) => r.low <= bands[75 + i]!.lower),
+    volumeRatio: previousVolume > 0 ? last.volume / previousVolume : null,
+    low20,
+    lowAge: rows
+      .slice(-20)
+      .reverse()
+      .findIndex((r) => r.low === low20),
+    priorLow5: Math.min(...rows.slice(-6, -1).map((r) => r.low)),
+    drawdown75: last.close / Math.max(...close.slice(-75)) - 1,
+    close: last.close,
+    previousClose: close[78],
+    low: last.low,
+    volume: last.volume,
+  };
+}
+export type ScoutIndicators = ReturnType<typeof scoutIndicators>;
