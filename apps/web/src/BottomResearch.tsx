@@ -1,3 +1,5 @@
+import { PageTitle } from "./PageTitle";
+import "./BottomResearch.css";
 import { useResearchParams } from "./research-params";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -36,6 +38,12 @@ const messages: Record<string, string> = {
   no_trading_volume: "最新日の出来高がゼロです。",
   volume_ratio_unknown: "前20日の出来高平均がゼロで、倍率を計算できません。",
 };
+const unconfirmed = new Set([
+  "liquidity_unknown",
+  "topix_unknown",
+  "news_earnings_unchecked",
+  "volume_ratio_unknown",
+]);
 const number = (v: number | null | undefined, percent = false) =>
   v == null
     ? "—"
@@ -61,11 +69,13 @@ export function BottomResearch({
   const data = code && !invalid ? result.data : undefined;
   return (
     <section className="bottom-research">
-      <h1>底打ち研究</h1>
-      <p>
-        取得済みの日足から反転の条件を調べます。スコアは成功確率ではありません。
-      </p>
-      <div className="toolbar">
+      <PageTitle
+        className="bottom-heading"
+        eyebrow="REVERSAL RESEARCH"
+        title="底打ち研究"
+        description="取得済みの日足から反転の条件を調べます。スコアは成功確率ではありません。"
+      />
+      <div className="toolbar bottom-controls">
         <StockPicker
           stocks={master.data || []}
           value={code}
@@ -88,11 +98,11 @@ export function BottomResearch({
       {master.error && <p role="alert">銘柄一覧を取得できませんでした。</p>}
       {data && (
         <>
-          <p>
+          <p className="bottom-data-context">
             {data.mode === "demo" ? "DEMO · 架空データ" : "RESEARCH · 研究用"}{" "}
             ／ 基準日 {data.dataAsOf || "—"}
           </p>
-          <p>
+          <p className="bottom-data-context">
             取得時刻{" "}
             {data.observedAt
               ? new Date(data.observedAt).toLocaleString("ja-JP", {
@@ -100,39 +110,64 @@ export function BottomResearch({
                 }) + " JST"
               : "—"}
           </p>
-          <article className="card" aria-label="底打ち解析結果">
-            <h2>{data.stage}</h2>
-            <p className="bottom-score">
-              {data.score === null ? "—" : data.score}
-              <small> / 100点</small>
-            </p>
-            <p>未校正のルールスコアです。底打ち確定や購入推奨を示しません。</p>
-            {data.status === "ready" && (
-              <p>
-                {data.candidatePrerequisite
-                  ? "下落・売られ過ぎの前提条件に一致しています。"
-                  : "下落・売られ過ぎの前提条件は揃っていません。"}
+          <div className="bottom-overview">
+            <article
+              className="card bottom-verdict"
+              aria-label="底打ち解析結果"
+            >
+              <span className="bottom-eyebrow">RULE SCORE</span>
+              <h2 className="bottom-stage">{data.stage}</h2>
+              <p className="bottom-score">
+                {data.score === null ? "—" : data.score}
+                <small> / 100点</small>
               </p>
-            )}
-            {data.reasonCodes.length > 0 && (
+              <p className="bottom-score-caption">
+                未校正のルールスコアです。底打ち確定や購入推奨を示しません。
+              </p>
+              {data.status === "ready" && (
+                <p
+                  className="bottom-prerequisite"
+                  data-met={data.candidatePrerequisite}
+                >
+                  {data.candidatePrerequisite
+                    ? "下落・売られ過ぎの前提条件に一致しています。"
+                    : "下落・売られ過ぎの前提条件は揃っていません。"}
+                </p>
+              )}
+              {data.reasonCodes.length > 0 && (
+                <ul>
+                  {data.reasonCodes.map((r) => (
+                    <li key={r}>{messages[r] || r}</li>
+                  ))}
+                </ul>
+              )}
+            </article>
+            <article className="card bottom-risks">
+              <div className="bottom-section-heading">
+                <h2>確認が必要な点</h2>
+                <span className="bottom-risk-count">
+                  {data.riskCodes.length}項目
+                </span>
+              </div>
               <ul>
-                {data.reasonCodes.map((r) => (
-                  <li key={r}>{messages[r] || r}</li>
+                {data.riskCodes.map((r) => (
+                  <li
+                    key={r}
+                    data-tone={unconfirmed.has(r) ? "info" : "warning"}
+                  >
+                    <span className="bottom-risk-label">
+                      {unconfirmed.has(r) ? "未確認" : "注意"}
+                    </span>
+                    <span>{messages[r] || r}</span>
+                  </li>
                 ))}
               </ul>
-            )}
-          </article>
-          <article className="card">
-            <h2>確認が必要な点</h2>
-            <ul>
-              {data.riskCodes.map((r) => (
-                <li key={r}>{messages[r] || r}</li>
-              ))}
-            </ul>
-          </article>
+            </article>
+          </div>
           {data.indicators && (
             <>
-              <article className="card">
+              <article className="card bottom-price-panel">
+                <span className="bottom-eyebrow">PRICE & INDICATORS</span>
                 <h2>価格と移動平均</h2>
                 <div className="chart" aria-label="80営業日の終値と移動平均">
                   <ResponsiveContainer width="100%" height="100%">
@@ -184,8 +219,17 @@ export function BottomResearch({
                   ))}
                 </dl>
               </article>
-              <article className="card">
-                <h2>条件ごとの得点</h2>
+              <article className="card bottom-conditions">
+                <div className="bottom-section-heading">
+                  <div>
+                    <span className="bottom-eyebrow">CONDITION BREAKDOWN</span>
+                    <h2>条件ごとの得点</h2>
+                  </div>
+                  <span className="bottom-match-count">
+                    一致 {data.conditions.filter((c) => c.met).length} /{" "}
+                    {data.conditions.length}条件
+                  </span>
+                </div>
                 <div className="bottom-table">
                   <table>
                     <thead>
@@ -197,11 +241,19 @@ export function BottomResearch({
                     </thead>
                     <tbody>
                       {data.conditions.map((c) => (
-                        <tr key={c.code}>
+                        <tr key={c.code} data-met={c.met}>
                           <td>{c.label}</td>
-                          <td>{c.met ? "一致" : "未一致"}</td>
                           <td>
-                            {c.earnedPoints} / {c.maxPoints}
+                            <span
+                              className="bottom-condition-state"
+                              data-met={c.met}
+                            >
+                              {c.met ? "一致" : "未一致"}
+                            </span>
+                          </td>
+                          <td className="bottom-condition-points">
+                            <strong>{c.earnedPoints}</strong>
+                            <span> / {c.maxPoints}</span>
                           </td>
                         </tr>
                       ))}
@@ -209,7 +261,7 @@ export function BottomResearch({
                   </table>
                 </div>
               </article>
-              <p>
+              <p className="bottom-takeaway">
                 かぶまる：一致した条件は
                 {data.conditions.filter((c) => c.met).length}
                 個だよ。反転の根拠と、確認が必要な点を一緒に見てね。

@@ -1,0 +1,92 @@
+/* Every route uses the same title hierarchy, including lazy-loaded pages. */
+.shell > main .content .title.page-title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0 24px;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  margin: 0 0 28px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+  font-size: inherit;
+  overflow: visible;
+}
+.shell > main .content .page-title .page-title-copy {
+  min-width: 0;
+}
+.shell > main .content .page-title .page-title-eyebrow {
+  display: block;
+  margin: 0 0 12px;
+  padding: 0;
+  color: var(--brand-accent);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.6;
+  letter-spacing: 0.14em;
+}
+.shell > main .content .page-title h1 {
+  margin: 0 0 12px;
+  padding: 0;
+  color: var(--text);
+  font-size: 28px;
+  font-weight: 650;
+  line-height: 1.45;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+.shell > main .content .page-title .page-title-description {
+  margin: 0;
+  padding: 0;
+  max-width: 80ch;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.9;
+  letter-spacing: normal;
+}
+.shell > main .content .page-title .page-title-portrait {
+  width: 64px;
+  min-width: 0;
+}
+.shell > main .content .page-title .page-title-portrait img {
+  display: block;
+  width: 64px;
+  max-width: 100%;
+  height: 80px;
+  max-height: none;
+  object-fit: contain;
+}
+.shell > main .content .page-title .page-title-extra {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin-top: 14px;
+}
+.shell > main .content .page-title .page-title-extra > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.9;
+}
+@media (max-width: 700px) {
+  .shell > main .content .title.page-title {
+    gap: 0 12px;
+    margin-bottom: 24px;
+  }
+  .shell > main .content .page-title h1 {
+    font-size: 24px;
+  }
+  .shell > main .content .page-title .page-title-portrait {
+    width: 48px;
+  }
+  .shell > main .content .page-title .page-title-portrait img {
+    width: 48px;
+    height: 64px;
+  }
+}

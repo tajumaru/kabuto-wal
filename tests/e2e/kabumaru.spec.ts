@@ -96,6 +96,8 @@ test("6画像・通知・チャットの状態・明示保存・モバイル・�
   ).toBeVisible();
   await panel.getByRole("button", { name: "すべて既読にする" }).click();
   await expect(page.locator(".kabumaru-badge")).toHaveCount(0);
+  await expect(panel.locator(".kabumaru-notice")).toHaveCount(0);
+  await expect(panel.getByText("未読のお知らせはありません。")).toBeVisible();
   await panel
     .getByRole("button", { name: "カブまるを閉じる", exact: true })
     .click();
@@ -111,6 +113,7 @@ test("6画像・通知・チャットの状態・明示保存・モバイル・�
   ).toBe("none");
   await launcher.click();
   await expect(panel).toBeVisible();
+  await expect(panel.locator(".kabumaru-notice")).toHaveCount(0);
   await page.screenshot({
     path: "test-results/kabumaru-mobile-dark.png",
     fullPage: true,

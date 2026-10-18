@@ -1,3 +1,4 @@
+import { PageTitle } from "./PageTitle";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -155,13 +156,7 @@ export function KabumaruLab({ request }: { request: Request }) {
     plan = plans.data?.records.find((p) => p.planId === planId);
   return (
     <section className="kabumaru-lab">
-      <header className="lab-heading">
-        <KabumaruPortrait pose="analyze" />
-        <div>
-          <h1>かぶまるAI研究所</h1>
-          <p>底打ちアルゴリズム実験室</p>
-        </div>
-      </header>
+      <PageTitle as="header" className="lab-heading" eyebrow="RESEARCH LAB" title="かぶまるAI研究所" description="底打ちアルゴリズム実験室" portrait={<KabumaruPortrait pose="analyze" />} />
       <p>
         <Link to="/research/agent">自律研究エージェント</Link> · <Link to="/research/notebook">研究ノート</Link> ·{" "}
         <Link to="/bottom/hunter">底打ちハンター</Link>

@@ -34,6 +34,19 @@ test("デモでのAPIアクセス成功を本人確認済みと表示しない",
   const panel = page.locator("#owner-wallet");
   await expect(panel.getByRole("button", { name: "本人確認を始める" })).toBeVisible();
   await expect(panel.getByText("本人確認済み", { exact: true })).toHaveCount(0);
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect(panel.getByRole("button", { name: "本人確認を始める" })).toBeInViewport();
+    const layout = await page.evaluate(() => ({
+      walletBottom: document.querySelector("#owner-wallet")!.getBoundingClientRect().bottom,
+      connectionsTop: document.querySelector("#service-connections")!.getBoundingClientRect().top,
+      overflow: document.documentElement.scrollWidth > innerWidth,
+    }));
+    expect(layout.walletBottom).toBeLessThanOrEqual(layout.connectionsTop);
+    expect(layout.overflow).toBe(false);
+    await page.screenshot({ path: `test-results/settings-layout-${width}.png`, fullPage: true });
+  }
 });
 
 test("接続解除でログアウトし、本人確認の画面に戻る", async ({ page }) => {

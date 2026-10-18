@@ -1,3 +1,4 @@
+import { PageTitle } from "./PageTitle";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -65,7 +66,7 @@ export function KabumaruResearch({ request }: { request: Request }) {
     } catch (e) { if(currentKey.current===requestKey)setMessage(e instanceof Error ? e.message : "研究結果を取得できませんでした。"); } finally { if(currentKey.current===requestKey)setBusy(false); }
   }
   return <section className="kabumaru-research" onClick={e=>{if((e.target as HTMLElement).closest('a[href^="#evidence-"]'))setEvidenceOpen(true);}}>
-    <header className="research-heading"><KabumaruPortrait pose="analyze" /><div><h1>かぶまるAI研究員</h1><p>数値は保存済みの根拠から確認するよ。将来の上昇や投資判断を約束するものではないよ。</p></div></header>
+    <PageTitle as="header" className="research-heading" eyebrow="RESEARCH ASSISTANT" title="かぶまるAI研究員" description="数値は保存済みの根拠から確認するよ。将来の上昇や投資判断を約束するものではないよ。" portrait={<KabumaruPortrait pose="analyze" />} />
     <div className="card research-controls"><StockPicker stocks={(master.data ?? []).map(s => ({ ...s, displayCode: s.displayCode ?? displayStockCode(s.providerCode) }))} value={params.get("code") ?? ""} onChange={code => update("code",code)} loading={master.isLoading} />
       <label>研究の基準日<input type="date" value={params.get("asOf") ?? ""} onChange={e => update("asOf",e.target.value)} /></label>
       <label>分析ジョブ<select value={params.get("jobId") ?? ""} onChange={e => update("jobId",e.target.value)}><option value="">基準日の保存済み結果を選択</option>{status.data?.jobs.map(j => <option key={j.id} value={j.id}>{j.input.asOf} · {j.status} · {j.id.slice(0,8)}</option>)}</select></label>

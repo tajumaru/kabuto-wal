@@ -1,0 +1,213 @@
+.stock-insights {
+  margin-top: 28px;
+  min-width: 0;
+}
+.stock-eyebrow {
+  display: block;
+  color: var(--brand-accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  margin-bottom: 8px;
+}
+.stock-insights-heading h2 {
+  font-size: 22px;
+  letter-spacing: -0.03em;
+  margin: 0 0 10px;
+}
+.stock-insights-heading p {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.8;
+  margin: 0;
+}
+.stock-insights-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px;
+  margin-top: 28px;
+}
+.stock-insights-grid > section {
+  min-width: 0;
+}
+.stock-insights-grid > section + section {
+  border-left: 1px solid var(--border);
+  padding-left: 32px;
+}
+.stock-insights-subheading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.stock-insights-subheading h3 {
+  font-size: 16px;
+  margin: 0;
+  color: var(--text);
+}
+.stock-insights-subheading > span {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.stock-memory-item {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
+}
+.stock-memory-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.stock-memory-meta > span {
+  color: var(--brand-accent);
+}
+.stock-memory-item > p {
+  font-size: 14px;
+  line-height: 1.9;
+  margin: 10px 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.stock-insights details {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+.stock-insights summary {
+  cursor: pointer;
+  padding: 6px 0;
+  line-height: 1.8;
+  color: var(--muted);
+}
+.stock-insights details p {
+  font-size: 12px;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
+.stock-insights .stock-memory-full {
+  white-space: pre-wrap;
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+  background: var(--soft);
+  border-radius: 8px;
+}
+.stock-insights details small {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+}
+.stock-insights-empty {
+  padding: 20px 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.8;
+  margin: 0;
+}
+.stock-shared-notes {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.stock-insights-link {
+  display: inline-block;
+  margin-top: 20px;
+  font-size: 12px;
+  color: var(--brand-accent);
+  text-underline-offset: 4px;
+}
+.stock-forecast-help {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.9;
+  margin: 14px 0;
+}
+.stock-forecast-row {
+  display: flex;
+  gap: 18px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
+  align-items: flex-start;
+}
+.stock-forecast-horizon {
+  flex: 0 0 46px;
+  font-size: 26px;
+  font-weight: 550;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-accent);
+}
+.stock-forecast-horizon small {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  margin-top: 5px;
+}
+.stock-forecast-body {
+  flex: 1;
+  min-width: 0;
+}
+.stock-forecast-values {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.stock-forecast-values span {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.stock-forecast-values strong {
+  font-size: 22px;
+  font-weight: 550;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.stock-forecast-values .stock-forecast-actual {
+  font-size: 14px;
+  font-weight: 500;
+}
+.stock-forecast-date {
+  font-size: 10px;
+  margin: 10px 0 0;
+  line-height: 1.8;
+  color: var(--muted);
+}
+@media (max-width: 1000px) {
+  .stock-insights-grid {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+  .stock-insights-grid > section + section {
+    border-left: 0;
+    padding-left: 0;
+  }
+}
+@media (max-width: 700px) {
+  .shell > main .stock-insights {
+    padding: 20px 16px;
+  }
+  .stock-insights-heading h2 {
+    font-size: 19px;
+  }
+  .stock-insights-grid {
+    margin-top: 24px;
+  }
+  .stock-memory-meta {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .stock-forecast-row {
+    gap: 12px;
+  }
+  .stock-forecast-values strong {
+    font-size: 20px;
+  }
+  .stock-forecast-values .stock-forecast-actual {
+    font-size: 12px;
+  }
+}

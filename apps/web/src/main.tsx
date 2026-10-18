@@ -1,3 +1,6 @@
+import { PageTitle as Title } from "./PageTitle";
+import "./Settings.css";
+import { StockInsights } from "./StockInsights";
 import { z } from "zod";
 import { dejavuMemoriesSchema, dejavuResultSchema } from "../../../packages/core/dejavu-api-schema";
 import { useResearchParams } from "./research-params";
@@ -294,23 +297,6 @@ function App() {
     </div>
   );
 }
-function Title({
-  eyebrow,
-  title,
-  description,
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="title">
-      <span>{eyebrow}</span>
-      <h1>{title}</h1>
-      <p>{description}</p>
-    </div>
-  );
-}
 function Home() {
   const queryClient = useQueryClient();
   const { data: stocks = [] } = useData("/watchlist"),
@@ -431,8 +417,8 @@ function Stock() {
     { data: ms = [] } = useData("/master");
   const [period, setPeriod] = useState(120);
   const { data: metrics } = useData("/stocks/" + code + "/features");
-  const { data: memories = [] } = useData("/memories");
-  const { data: predictions = [] } = useData("/predictions");
+  const memoryQuery = useData("/memories"), memories = memoryQuery.data ?? [];
+  const predictionQuery = useData("/predictions"), predictions = predictionQuery.data ?? [];
   const last = data.at(-1);
   return (
     <>
@@ -496,25 +482,7 @@ function Stock() {
           </dl>
         </div>
       )}
-      <div className="card">
-        <h3>この銘柄の記憶と予測</h3>
-        {memories
-          .filter(
-            (m: any) =>
-              m.active && (!m.providerCode || m.providerCode === code),
-          )
-          .slice(-5)
-          .map((m: any) => (
-            <p key={m.recordId}>
-              {m.text}
-              <small> / {m.recordId}</small>
-            </p>
-          ))}
-        <p>
-          予測記録{" "}
-          {predictions.filter((p: any) => p.providerCode === code).length}件
-        </p>
-      </div>
+      <StockInsights code={code} memories={memories} predictions={predictions} memoryLoading={memoryQuery.isPending} predictionLoading={predictionQuery.isPending} memoryError={!!memoryQuery.error} predictionError={!!predictionQuery.error} />
     </>
   );
 }
@@ -991,36 +959,9 @@ function Settings() {
       <Title
         eyebrow="WORKSPACE SETTINGS"
         title="研究環境を整える。"
-        description="秘密鍵・APIキーはサーバー環境変数で管理します。"
+        description="ウォレットの本人確認、サービスの接続状態、保存データを管理します。"
       />
-      <section className="card connection-card" aria-labelledby="connection-title">
-        <h2 id="connection-title">接続状態</h2>
-        <p className="connection-intro">各機能の設定状況を確認できます。「設定済み」でも、実際に使えるかの確認は別途必要です。</p>
-        {isPending ? <p role="status">接続状態を確認中…</p> : error ? <p role="alert">接続状態を取得できませんでした。下のウォレット欄で本人確認の状態を確認してください。</p> : data && <>
-          <div className="connection-grid">
-            {[
-              { title: "株価データ", purpose: "銘柄や日足データの取得", status: data.market, help: "実接続が未検証の場合は、銘柄画面でデータを取得して確認してください。" },
-              { title: "記憶の保存・検索（MemWal）", purpose: "記録した内容を保存し、あとで検索", status: data.memory, help: "下のボタンで、記憶の所有者とアプリのアクセス権限を確認します。保存・検索の動作確認は含みません。", action: true },
-              { title: "AIの応答", purpose: "記録や株価をもとに回答", status: data.llm, help: "ローカル応答はアプリ内で作る回答です。外部AIに接続していなくても利用できます。" },
-              { title: "予測の証明（Sui）", purpose: "予測を作成した証拠をブロックチェーンに記録", status: data.sui, help: "ウォレットでの本人確認とは別の機能です。未配備の場合、予測の証明は記録されません。" },
-            ].map((item) => <article className="connection-item" key={item.title}>
-              <h3>{item.title}</h3>
-              <p className="connection-purpose">{item.purpose}</p>
-              <p className="connection-state">{item.status || "状態を取得できません"}</p>
-              <p className="connection-help">{item.help}</p>
-              {item.action && <Action onClick={() => api("/connections/memwal", {})} successMessage="所有者とアプリのアクセス権限を確認しました。保存・検索の動作は未検証です。">MemWalのアクセス権限を確認</Action>}
-            </article>)}
-          </div>
-          <div className="connection-permissions">
-            <h3>株価データの外部送信</h3>
-            <p className="connection-help">送信の許可設定です。接続の成功や、送信済みであることを示すものではありません。</p>
-            <dl>
-              <dt>記憶の保存先（MemWal）へ</dt><dd>{data.allowMemwal ? "送信を許可" : "送信しない"}</dd>
-              <dt>外部AIへ</dt><dd>{data.allowLlm ? "送信を許可" : "送信しない"}</dd>
-            </dl>
-          </div>
-        </>}
-      </section>
+      <nav className="settings-nav" aria-label="設定項目"><a href="#owner-wallet">ウォレットと本人確認</a><a href="#service-connections">接続状態</a><a href="#settings-backup">バックアップ</a></nav>
       <div className="card wallet-card" id="owner-wallet">
         <div className="wallet-heading">
           <div className="wallet-symbol" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 9h18M16 13h5M7 5V3h10"/><circle cx="16" cy="14.5" r=".75" fill="currentColor" stroke="none"/></svg></div>
@@ -1050,8 +991,35 @@ function Settings() {
         </Suspense>
         </>}
       </div>
-      <div className="card">
-        <h2>暗号化バックアップ</h2>
+      <section id="service-connections" className="card connection-card" aria-labelledby="connection-title">
+        <span className="settings-eyebrow">CONNECTED SERVICES</span><h2 id="connection-title">接続状態</h2>
+        <p className="connection-intro">各機能の設定状況を確認できます。「設定済み」でも、実際に使えるかの確認は別途必要です。</p>
+        {isPending ? <p role="status">接続状態を確認中…</p> : error ? <p role="alert">接続状態を取得できませんでした。上のウォレット欄で本人確認の状態を確認してください。</p> : data && <>
+          <div className="connection-grid">
+            {[
+              { title: "株価データ", purpose: "銘柄や日足データの取得", status: data.market, help: "実接続が未検証の場合は、銘柄画面でデータを取得して確認してください。" },
+              { title: "記憶の保存・検索（MemWal）", purpose: "記録した内容を保存し、あとで検索", status: data.memory, help: "下のボタンで、記憶の所有者とアプリのアクセス権限を確認します。保存・検索の動作確認は含みません。", action: true },
+              { title: "AIの応答", purpose: "記録や株価をもとに回答", status: data.llm, help: "ローカル応答はアプリ内で作る回答です。外部AIに接続していなくても利用できます。" },
+              { title: "予測の証明（Sui）", purpose: "予測を作成した証拠をブロックチェーンに記録", status: data.sui, help: "ウォレットでの本人確認とは別の機能です。未配備の場合、予測の証明は記録されません。" },
+            ].map((item) => <article className="connection-item" key={item.title}>
+              <h3>{item.title}</h3>
+              <p className="connection-purpose">{item.purpose}</p>
+              <p className="connection-state">{item.status || "状態を取得できません"}</p>
+              <p className="connection-help">{item.help}</p>
+              {item.action && <Action onClick={() => api("/connections/memwal", {})} successMessage="所有者とアプリのアクセス権限を確認しました。保存・検索の動作は未検証です。">MemWalのアクセス権限を確認</Action>}
+            </article>)}
+          </div>
+          <div className="connection-permissions">
+            <h3>株価データの外部送信</h3>
+            <p className="connection-help">送信の許可設定です。接続の成功や、送信済みであることを示すものではありません。</p>
+            <dl>
+              <dt>記憶の保存先（MemWal）へ</dt><dd>{data.allowMemwal ? "送信を許可" : "送信しない"}</dd>
+              <dt>外部AIへ</dt><dd>{data.allowLlm ? "送信を許可" : "送信しない"}</dd>
+            </dl>
+          </div>
+        </>}
+      </section>
+      <div className="card settings-backup" id="settings-backup"><span className="settings-eyebrow">DATA & BACKUP</span><h2>暗号化バックアップ</h2>
         <p>
           全JSON記録・索引・同期状態・saltを暗号化。環境変数と認証nonceは含みません。
         </p>

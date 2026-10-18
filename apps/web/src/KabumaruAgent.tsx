@@ -1,3 +1,4 @@
+import { PageTitle } from "./PageTitle";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -132,29 +133,34 @@ export function KabumaruAgent({ request }: { request: Request }) {
   const base = `/research/agent/sessions/${id}`;
   return (
     <div className="agent-page">
-      <section
-        className="card agent-header"
+      <PageTitle
+        as="section"
+        className="agent-header"
         aria-label="研究エージェントの紹介"
+        eyebrow="RESEARCH WORKSPACE"
+        title="かぶまる自律研究エージェント"
+        description="保存した研究を調べ、あなたが確認した計画に沿って、比較と振り返りを進めるよ。"
+        portrait={<KabumaruPortrait pose="analyze" />}
       >
-        <KabumaruPortrait pose="analyze" />
-        <div>
-          <h1>かぶまる自律研究エージェント</h1>
+        <details>
+          <summary>かぶまるが自動で進めること</summary>
           <p>
-            保存した研究を調べ、あなたが確認した計画に沿って、比較と振り返りを進めるよ。
+            あなたが内容を確認して開始すると、計画に沿って比較・結果の確認・記録を進めます。条件を勝手に変えて研究を繰り返すことはありません。株の売買・送金・データの外部送信は行いません。
           </p>
-          <details>
-            <summary>かぶまるが自動で進めること</summary>
-            <p>
-              あなたが内容を確認して開始すると、計画に沿って比較・結果の確認・記録を進めます。条件を勝手に変えて研究を繰り返すことはありません。株の売買・送金・データの外部送信は行いません。
-            </p>
-          </details>
-          <Link to="/research/lab">AI研究所</Link> ·{" "}
-          <Link to="/research/notebook">研究ノート</Link>
-        </div>
-      </section>
+        </details>
+        <nav className="agent-header-links" aria-label="関連する研究画面">
+          <Link to="/research/lab">
+            AI研究所 <span aria-hidden="true">↗</span>
+          </Link>
+          <Link to="/research/notebook">
+            研究ノート <span aria-hidden="true">↗</span>
+          </Link>
+        </nav>
+      </PageTitle>
       <AgentWorkflowGuide status={state?.status} />
       {!id && (
-        <section className="card">
+        <section className="card agent-compose">
+          <span className="agent-eyebrow">NEW RESEARCH</span>
           <h2>1. 何を調べたいですか？</h2>
           <p>
             目的とテーマを選びます。初めてなら入力済みの内容のままで試せます。
@@ -234,10 +240,14 @@ export function KabumaruAgent({ request }: { request: Request }) {
       )}
       {state && (
         <>
-          <section className="card" id="agent-session">
+          <section className="card agent-session" id="agent-session">
             <h2>今回の研究</h2>
             <p>{state.original.objective}</p>
-            <p role="status">
+            <p
+              role="status"
+              className="agent-session-status"
+              data-status={state.status}
+            >
               状態：{agentStatusLabels[state.status]} ／{" "}
               {state.checkpoint?.processed ?? 0}/
               {state.checkpoint?.total ?? state.plan?.steps.length ?? 0}ステップ
@@ -559,8 +569,16 @@ export function KabumaruAgent({ request }: { request: Request }) {
           )}
         </>
       )}
-      <section className="card">
-        <h2>保存済み研究</h2>
+      <section className="card agent-library">
+        <div className="agent-library-heading">
+          <div>
+            <span className="agent-eyebrow">RESEARCH LIBRARY</span>
+            <h2>保存済み研究</h2>
+          </div>
+          <span className="agent-library-count">
+            {sessions.data?.total ?? 0}件
+          </span>
+        </div>
         {sessions.isPending ? (
           <p role="status">一覧を読み込み中…</p>
         ) : sessions.error ? (
@@ -569,11 +587,13 @@ export function KabumaruAgent({ request }: { request: Request }) {
           <p>今回の研究はまだありません。</p>
         ) : (
           sessions.data?.records.map((s) => (
-            <p key={s.original.sessionId}>
+            <p className="agent-library-item" key={s.original.sessionId}>
               <Link to={`?session=${s.original.sessionId}&page=${page}`}>
                 {s.original.objective}
-              </Link>{" "}
-              · {agentStatusLabels[s.status]}
+              </Link>
+              <span className="agent-state-badge" data-status={s.status}>
+                {agentStatusLabels[s.status]}
+              </span>
             </p>
           ))
         )}

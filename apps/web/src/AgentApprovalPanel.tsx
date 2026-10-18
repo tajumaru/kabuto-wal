@@ -14,7 +14,7 @@ export function AgentApprovalPanel({
   const [confirm, setConfirm] = useState(false),
     [error, setError] = useState("");
   return (
-    <section className="card">
+    <section className="card agent-approval-panel">
       <h2>利用者の承認</h2>
       <label className="agent-check">
         <input

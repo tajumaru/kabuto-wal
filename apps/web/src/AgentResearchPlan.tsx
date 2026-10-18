@@ -1,7 +1,7 @@
 import type { AgentPlan } from "../../../packages/core/kabumaru-agent-schema";
 export function AgentResearchPlan({ plan: p }: { plan: AgentPlan }) {
   return (
-    <section className="card">
+    <section className="card agent-plan">
       <h2>研究計画と処理の上限</h2>
       <p>目的：{p.objective}</p>
       <p>仮説：{p.hypothesis}</p>
