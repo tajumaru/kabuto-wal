@@ -83,3 +83,21 @@ it("保存先の矛盾を全件確認し、先行する評価も部分保存し�
   expect(await f.s.store.read("a.json",null)).toBeNull();expect(await f.s.store.read("b.json")).toEqual({n:2});
  }finally{await f.cleanup();}
 });
+
+it("別Serviceが異なる評価時刻で同じ評価を仮生成しても先行原本を再利用する",async()=>{
+ const f=await scoutScaleFixture(2),other=new Service(f.root,"demo",false);
+ try{
+  for(const file of await f.s.store.files("research/scout/evaluations"))await unlink(f.s.store.path(file));
+  let arrived=0,release!:()=>void;const gate=new Promise<void>(r=>{release=r;});
+  const writes=[vi.spyOn(f.s.store,"write"),vi.spyOn(other.store,"write")];
+  for(const service of [f.s,other]){
+   const lock=service.store.lock.bind(service.store);
+   service.store.lock=async(fn,wait)=>{if(++arrived===2)release();await gate;return lock(fn,wait);};
+  }
+  const [a,b]=await Promise.all([scoutAccuracy(f.s,{},f.now),scoutAccuracy(other,{},new Date(f.now.getTime()+1))]);
+  expect(a.groups).toEqual(b.groups);
+  expect(a.predictions.map(p=>p.results.map(r=>r.evaluationId))).toEqual(b.predictions.map(p=>p.results.map(r=>r.evaluationId)));
+  expect(writes.reduce((sum,spy)=>sum+spy.mock.calls.length,0)).toBe(2);
+  expect((await f.s.store.files("research/scout/evaluations")).length).toBe(2);
+ }finally{await f.cleanup();}
+});

@@ -72,10 +72,20 @@ export async function cachedScoutAccuracy<T,R=T>(s:Service,key:string,now:Date,c
  // A conflict returns to Phase A; expensive computation is never retried here.
  const publish=async()=>{
  if(!await unchanged(s,entry))return false;
+ const missing=new Set<string>();
+ // Preflight every destination before the first write. Full content equality
+ // includes the evaluation ID and forecast reference produced by the validated
+ // compute path. Conflicting originals must never be replaced.
  for(const [file,data] of writes){
   const existing=await s.store.read(file,null);
   if(existing!==null){if(hash(existing)!==hash(data))throw Error("評価原本の保存内容が競合しています");}
-  else await s.store.write(file,data,true);
+  else missing.add(file);
+ }
+ // Destination reads may have yielded while a non-cooperating writer changed
+ // inputs. Check the complete source footprint again before publication.
+ if(!await unchanged(s,entry))return false;
+ for(const [file,data] of writes){
+  if(missing.has(file))await s.store.write(file,data,true);
   memo.set(file,Promise.resolve(data));reads.set(file,{file,digest:hash(data)});
   for(const [prefix,files] of lists)if(file.startsWith(`${prefix}/`)&&!files.includes(file)){files.push(file);files.sort();}
  }
