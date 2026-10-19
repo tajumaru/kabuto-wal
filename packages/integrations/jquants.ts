@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { barSchema } from "../core/index";
+import { earningsSummarySchema, earningsDateSchema } from "../core/earnings-schema";
 import {
   JQuantsLimiter,
   jquantsRequest,
@@ -13,11 +14,13 @@ const paginationSchema = z.object({
 });
 export class JQuants {
   private gate: RequestGate;
+  private plan: string;
   constructor(
     private key: string,
     private fetcher: typeof fetch = fetch,
     options: { gate?: RequestGate; root?: string; plan?: string } = {},
   ) {
+    this.plan = options.plan ?? process.env.JQUANTS_PLAN ?? "Free";
     const rpm = process.env.JQUANTS_REQUESTS_PER_MINUTE;
     this.gate =
       options.gate ??
@@ -33,8 +36,19 @@ export class JQuants {
     params: Record<string, string>,
     cursor?: string,
   ) {
+    if (endpoint.startsWith("fins/")) {
+      if (this.plan !== "Light") throw Error("決算分析1.0はJ-Quants Light専用です");
+      const allowed = endpoint === "fins/summary" ? ["code", "date"] : endpoint === "fins/earnings-date" ? ["code", "date", "scheduled_date"] : [];
+      if (!allowed.length || Object.keys(params).some(k => !allowed.includes(k))) throw Error("未対応の財務APIパラメータ");
+      const count = Object.keys(params).length;
+      if (!count || (endpoint === "fins/earnings-date" && count !== 1)) throw Error("財務APIの指定条件が不正です");
+      for (const [k, v] of Object.entries(params)) {
+        if (k === "code") z.string().regex(/^[0-9A-Z]{4,5}$/).parse(v);
+        else z.string().date().parse(v.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3"));
+      }
+    }
     if (
-      !["equities/bars/daily", "equities/master", "markets/calendar"].includes(
+      !["equities/bars/daily", "equities/master", "markets/calendar", "fins/summary", "fins/earnings-date"].includes(
         endpoint,
       )
     )
@@ -53,6 +67,12 @@ export class JQuants {
     );
     if (!parsed.data.length && parsed.pagination_key)
       throw Error("空ページに継続キーがあります");
+    if (endpoint.startsWith("fins/")) {
+      const schema = endpoint === "fins/summary" ? earningsSummarySchema : earningsDateSchema;
+      parsed.data = parsed.data.map(r => schema.parse(r));
+      if (params.code && parsed.data.some(r => r.Code !== (params.code.length === 4 ? `${params.code}0` : params.code))) throw Error("対象外の銘柄が含まれています");
+      if (params.date && parsed.data.some(r => (endpoint === "fins/summary" ? r.DiscDate : r.PubDate) !== params.date.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3"))) throw Error("対象外の日付が含まれています");
+    }
     return { data: parsed.data, next: parsed.pagination_key ?? undefined };
   }
   async pages(endpoint: string, params: Record<string, string>) {
@@ -96,6 +116,12 @@ export class JQuants {
   }
   async master(date?: string) {
     return this.pages("equities/master", date ? { date } : {});
+  }
+  async financialSummary(params: { code?: string; date?: string }) {
+    return (await this.pages("fins/summary", params)).map(r => earningsSummarySchema.parse(r));
+  }
+  async earningsDates(params: { code?: string; date?: string; scheduled_date?: string }) {
+    return (await this.pages("fins/earnings-date", params)).map(r => earningsDateSchema.parse(r));
   }
   async calendar(from: string, to: string) {
     return (await this.pages("markets/calendar", { from, to })).map((r) => ({
