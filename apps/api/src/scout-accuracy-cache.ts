@@ -10,13 +10,16 @@ const readKey=(file:string,fallback:unknown)=>hash([file,typeof fallback,fallbac
 async function unchanged(s:Service,entry:Pick<Entry<unknown>,"lists"|"reads">){
  const inventories=async()=> (await scoutAccuracyBatch([...entry.lists],async([prefix,files])=>hash((await s.store.files(prefix)).sort())===hash(files))).every(Boolean);
  try{
-  if(!await inventories())return false;
-  if(!(await scoutAccuracyBatch([...entry.reads.values()],async({file,fallback,digest})=>hash(await s.store.read(file,fallback))===digest)).every(Boolean))return false;
+  for(let pass=0;pass<2;pass++){
+   if(!await inventories())return false;
+   if(!(await scoutAccuracyBatch([...entry.reads.values()],async({file,fallback,digest})=>hash(await s.store.read(file,fallback))===digest)).every(Boolean))return false;
+  }
   return await inventories();
  }catch{return false;}
 }
-/** Derived in-memory cache. Verify source CONTENTS and file inventories on every hit.
- * No disk cache, stale generation-only keys, source writes, or provider calls. */
+/** Verify source contents twice and inventories on every hit. No disk cache,
+ * generation-only shortcuts, provider calls, or prediction original writes.
+ * Evaluation originals are staged and published under the existing writer lock. */
 export async function cachedScoutAccuracy<T,R=T>(s:Service,key:string,now:Date,compute:(view:Service)=>Promise<T>,select:(value:T)=>R=(v=>v as unknown as R),writeLock=false):Promise<R>{
  let entries=caches.get(s);if(!entries){entries=new Map();caches.set(s,entries);}
  let flights=pending.get(s);if(!flights){flights=new Map();pending.set(s,flights);}
@@ -27,7 +30,7 @@ export async function cachedScoutAccuracy<T,R=T>(s:Service,key:string,now:Date,c
  if(old&&at>=old.at&&at<old.until&&await unchanged(s,old))return old;
  entries.delete(key);
  for(let attempt=0;attempt<3;attempt++){
- const reads:Entry<T>["reads"]=new Map(),lists:Entry<T>["lists"]=new Map(),memo=new Map<string,Promise<unknown>>(),writes=new Map<string,unknown>();
+ const reads:Entry<T>["reads"]=new Map(),lists:Entry<T>["lists"]=new Map(),memo=new Map<string,Promise<unknown>>(),listing=new Map<string,Promise<string[]>>(),writes=new Map<string,unknown>();
  let until=at+60_000;
  // Expire before a stored future observation, forecast, or close deadline becomes usable.
  const observe=(value:unknown):void=>{
@@ -43,7 +46,10 @@ export async function cachedScoutAccuracy<T,R=T>(s:Service,key:string,now:Date,c
    if(!value){value=target.read<unknown>(file,fallback);memo.set(id,value);}
    const result=await value;reads.set(id,{file,fallback:structuredClone(fallback),digest:hash(result)});observe(result);return structuredClone(result);
   };
-  if(property==="files")return async(prefix:string)=>{let files=lists.get(prefix);if(!files){files=(await target.files(prefix)).sort();lists.set(prefix,files);}return [...files];};
+  if(property==="files")return async(prefix:string)=>{
+   let promise=listing.get(prefix);if(!promise){promise=target.files(prefix).then(files=>{files.sort();lists.set(prefix,files);return files;});listing.set(prefix,promise);}
+   return [...await promise];
+  };
   if(property==="write")return async(file:string,value:unknown,immutable=false)=>{
    if(!writeLock||!immutable)throw Error("精度集計ではロック下の不変評価原本だけを保存できます");
    if(writes.has(file)&&hash(writes.get(file))!==hash(value))throw Error("評価原本の保存内容が競合しています");
