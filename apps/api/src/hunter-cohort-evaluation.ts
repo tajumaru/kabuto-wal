@@ -7,7 +7,7 @@ import { hash,ADJUSTMENT_VERSION } from "../../../packages/integrations/adjusted
 import { MarketIngestion } from "../../../packages/integrations/market-ingestion";
 import { snapshot } from "./dejavu";
 export function cohortEvaluationId(row:Omit<CohortEvaluation,"evaluationId">){const {evaluationId,evaluatedAt,evaluationCutoff,...body}=cohortEvaluationSchema.parse({...row,evaluationId:"0".repeat(64)});void evaluationId;void evaluatedAt;void evaluationCutoff;return hash(body);}
-export function cohortPathOutcome(path:Bar[],asOf:string,target:string,calendar:Calendar,cutoff:string){
+export function cohortPricePath(path:Bar[],asOf:string,target:string,calendar:Calendar,cutoff:string){
   const dates=calendar.filter(d=>d.open&&d.date>=asOf&&d.date<=target).map(d=>d.date).sort();
   if(!z.string().datetime({offset:true}).safeParse(cutoff).success)return null;
   // availableAt is MarketIngestion's observedAt. Select the latest known
@@ -23,7 +23,11 @@ export function cohortPathOutcome(path:Bar[],asOf:string,target:string,calendar:
   }
   const rows=dates.map(d=>byDate.get(d));
   if(ambiguous.size||!dates.length||new Set(dates).size!==dates.length||dates[0]!==asOf||dates.at(-1)!==target||rows.some(b=>!b||!Number.isFinite(b.adjClose)||b.adjClose!<=0||typeof b.revisionId!=="string"||!b.revisionId.trim()||typeof b.seriesId!=="string"||!b.seriesId.trim())||new Set(rows.map(b=>b?.seriesId)).size!==1||new Set(rows.map(b=>b?.providerCode)).size!==1)return null;
-  const prices=rows.map(b=>b!.adjClose!),base=prices[0];let peak=base,drawdown=0,rise=0,rebounded=false,relapse=false;
+  return rows as Bar[];
+}
+export function cohortPathOutcome(path:Bar[],asOf:string,target:string,calendar:Calendar,cutoff:string){
+  const rows=cohortPricePath(path,asOf,target,calendar,cutoff);if(!rows)return null;
+  const prices=rows.map(b=>b.adjClose!),base=prices[0];let peak=base,drawdown=0,rise=0,rebounded=false,relapse=false;
   for(const p of prices){peak=Math.max(peak,p);drawdown=Math.min(drawdown,p/peak-1);rise=Math.max(rise,p/base-1);if(p>base)rebounded=true;if(rebounded&&p<base)relapse=true;}
   return {actualReturn:prices.at(-1)!/base-1,up:prices.at(-1)!>base,maxDrawdown:drawdown,maxRise:rise,relapse,inputRevisionIds:rows.map(b=>b!.revisionId),dataAvailableAt:new Date(Math.max(...rows.map(b=>Date.parse(b!.availableAt)))).toISOString(),basePrice:base,targetPrice:prices.at(-1)!};
 }

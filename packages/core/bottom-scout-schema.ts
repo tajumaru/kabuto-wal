@@ -76,6 +76,9 @@ export const scoutReportSchema = z.object({
 });
 export type ScoutReport = z.infer<typeof scoutReportSchema>;
 export const scoutReviewSchema = z.object({
+  methodVersion: z.literal("scout-outcome-v2").optional(),
+  forecastId: scoutId.optional(),
+  evaluationId: scoutId.optional(),
   reportId: scoutId,
   asOf: z.string().date(),
   evaluatedAt: z.string().datetime(),
@@ -105,6 +108,15 @@ export const scoutReviewSchema = z.object({
       maxDecline: nullable,
       benchmarkReturn: nullable,
       revisionIds: z.array(z.string()),
+      target: z.string().nullable().optional(),
+      up: z.boolean().nullable().optional(),
+      maxRise: nullable.optional(),
+      maxDrawdown: nullable.optional(),
+      relapse: z.boolean().nullable().optional(),
+      basePrice: nullable.optional(),
+      targetPrice: nullable.optional(),
+      dataAvailableAt: z.string().nullable().optional(),
+      benchmarkRevisionIds: z.array(z.string()).optional(),
     }),
   ),
   notes: z.array(z.string()),

@@ -17,10 +17,11 @@ import { snapshot } from "./dejavu";
 import { SCOUT_BASE, readScoutReport } from "./bottom-scout";
 import { SCOUT_METHOD } from "../../../packages/core/bottom-scout-score";
 import { z } from "zod";
-async function currentSeries(s: Service, code: string, now: Date) {
+import { cohortPricePath,cohortPathOutcome } from "./hunter-cohort-evaluation";
+export async function currentScoutSeries(s: Service, code: string, now: Date) {
   return (
     (await readDerivedSeries(s.store, code, undefined, now.toISOString()))
-      ?.bars ?? (await snapshot(s, code, now.toISOString()))
+      ?.bars ?? (await snapshot(s, code, now.toISOString(),true))
   );
 }
 export function scoutOutcome(
@@ -36,6 +37,7 @@ export function scoutOutcome(
     actualReturn: null,
     maxDecline: null,
     revisionIds: [] as string[],
+    target:null as string|null,up:null as boolean|null,maxRise:null as number|null,maxDrawdown:null as number|null,relapse:null as boolean|null,basePrice:null as number|null,targetPrice:null as number|null,dataAvailableAt:null as string|null,
   };
   let target: string;
   try {
@@ -51,29 +53,12 @@ export function scoutOutcome(
     return {
       ...empty,
       status: "pending" as const,
+      target,
       reason: "評価期限がまだ確定していません",
     };
-  const expected = [
-      asOf,
-      ...calendar
-        .filter((d) => d.open && d.date > asOf && d.date <= target)
-        .map((d) => d.date)
-        .sort(),
-    ],
-    path = expected.map((date) => bars.find((b) => b.sessionDate === date));
-  if (
-    path.length !== horizon + 1 ||
-    path.some(
-      (b) =>
-        !b?.adjClose ||
-        !b.adjLow ||
-        b.availableAt > now.toISOString() ||
-        b.seriesId !== path[0]?.seriesId,
-    ) ||
-    !path[0]?.seriesId
-  )
-    return empty;
-  const valid = path as Bar[],
+  const valid=cohortPricePath(bars,asOf,target,calendar,now.toISOString()),metrics=cohortPathOutcome(bars,asOf,target,calendar,now.toISOString());
+  if(!valid||!metrics||valid.length!==horizon+1||valid.some(b=>!Number.isFinite(b.adjLow)||b.adjLow!<=0||b.adjLow!>b.adjClose!))return {...empty,target};
+  const
     base = valid[0].adjClose!;
   return {
     status: "evaluated" as const,
@@ -81,25 +66,30 @@ export function scoutOutcome(
     actualReturn: valid.at(-1)!.adjClose! / base - 1,
     maxDecline: Math.min(0, ...valid.slice(1).map((b) => b.adjLow! / base - 1)),
     revisionIds: valid.map((b) => b.revisionId),
+    target,up:metrics.up,maxRise:metrics.maxRise,maxDrawdown:metrics.maxDrawdown,relapse:metrics.relapse,basePrice:metrics.basePrice,targetPrice:metrics.targetPrice,dataAvailableAt:metrics.dataAvailableAt,
   };
 }
 export async function evaluateScout(
   s: Service,
   report: ScoutReport,
   now = new Date(),
+  options: {calendar?:Calendar;calendarIssue?:string;requiredTargets?:Record<string,string|null>;benchmarkCode?:string|null;forecastId?:string;loadSeries?:(code:string)=>Promise<Bar[]>} = {},
 ) {
-  const calendar = await s.store.read<Calendar>("market/calendar.json", []),
+  const calendar = options.calendar??await s.store.read<Calendar>("market/calendar.json", []),
     configured = process.env.SCOUT_BENCHMARK_CODE,
     benchmarkCode =
-      configured && /^[0-9A-Z]{5}$/.test(configured) ? configured : null,
+      options.benchmarkCode!==undefined?options.benchmarkCode:configured && /^[0-9A-Z]{5}$/.test(configured) ? configured : null,
+    load=options.loadSeries??((code:string)=>currentScoutSeries(s,code,now)),
     benchmark = benchmarkCode
-      ? await currentSeries(s, benchmarkCode, now).catch(() => [])
+      ? await load(benchmarkCode).catch(() => [])
       : [],
     rows = [];
   for (const r of report.rows) {
-    const bars = await currentSeries(s, r.code, now).catch(() => []);
+    const bars = await load(r.code).catch(() => []);
     for (const horizon of [5, 10, 20]) {
-      const outcome = scoutOutcome(bars, report.asOf, horizon, calendar, now),
+      const raw = scoutOutcome(bars, report.asOf, horizon, calendar, now),
+        issue=options.calendarIssue??(options.requiredTargets&&!options.requiredTargets[String(horizon)]?"予測時点の営業日期限が固定できていません":null),
+        outcome=issue?{...scoutOutcome([],report.asOf,horizon,calendar,now),status:"unavailable" as const,reason:issue}:raw,
         baseline = benchmarkCode
           ? scoutOutcome(benchmark, report.asOf, horizon, calendar, now)
           : null;
@@ -109,6 +99,7 @@ export async function evaluateScout(
         ...outcome,
         benchmarkReturn:
           baseline?.status === "evaluated" ? baseline.actualReturn : null,
+        benchmarkRevisionIds:baseline?.status==="evaluated"?baseline.revisionIds:[],
       });
     }
   }
@@ -161,6 +152,8 @@ export async function evaluateScout(
         });
       }
   const review = scoutReviewSchema.parse({
+    methodVersion:"scout-outcome-v2",
+    ...(options.forecastId?{forecastId:options.forecastId}:{}),
     reportId: report.reportId,
     asOf: report.asOf,
     evaluatedAt: now.toISOString(),
@@ -177,13 +170,18 @@ export async function evaluateScout(
         : ["比較対象の価格が未指定・未取得のためベンチマーク差は未評価です。"]),
     ],
   });
-  const evaluationKey = `${SCOUT_BASE}/evaluations/${report.reportId}/${hash(review)}/original.json`;
+  const identity=(r:typeof review)=>{const {evaluatedAt,evaluationId,...body}=r;void evaluatedAt;void evaluationId;return hash(body);};
+  review.evaluationId=identity(review);
+  const evaluationKey = `${SCOUT_BASE}/evaluations/${report.reportId}/${review.evaluationId}/original.json`;
+  const existing=await s.store.read(evaluationKey,null);
+  if(existing){const parsed=scoutReviewSchema.parse(existing);if(identity(parsed)!==review.evaluationId)throw Error("評価原本hashが一致しません");return parsed;}
   try {
     await s.store.write(evaluationKey, review, true);
   } catch (error) {
     // Identical repeated evaluations reuse their immutable original.
     const existing = await s.store.read(evaluationKey, null);
-    if (!existing || hash(existing) !== hash(review)) throw error;
+    if (!existing || identity(scoutReviewSchema.parse(existing)) !== review.evaluationId) throw error;
+    return scoutReviewSchema.parse(existing);
   }
   return review;
 }

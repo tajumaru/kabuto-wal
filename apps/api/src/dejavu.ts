@@ -14,7 +14,7 @@ import {
 
 const namespace = (mode: string, code: string) =>
   `kabutowal:dejavu:v1:${mode}:${code}`;
-export async function snapshot(service: Service, code: string, cutoff: string) {
+export async function snapshot(service: Service, code: string, cutoff: string, strictRevisionSelection = false) {
   const records = await service.store.all<Bar | {
     kind: string; contentId?: string; availableAt?: string; seriesId?: string; bars?: Bar[];
     entries?: { sessionDate: string; availableAt: string; seriesId?: string }[];
@@ -28,6 +28,8 @@ export async function snapshot(service: Service, code: string, cutoff: string) {
   if (!Number.isFinite(cutoffMs)) throw Error("取得時点が不正です");
   const chosen = new Map<string, Bar>();
   const timestamps = new Map<string, number>();
+  const ambiguous = new Set<string>();
+  const identity=(bar:Bar)=>JSON.stringify(Object.fromEntries(Object.entries({...bar,availableAt:new Date(bar.availableAt).toISOString()}).sort(([a],[b])=>a.localeCompare(b))));
   let revisionCount = 0;
   const choose = (bar: Bar, availableAt = bar.availableAt, seriesId = bar.seriesId) => {
     revisionCount++;
@@ -37,6 +39,9 @@ export async function snapshot(service: Service, code: string, cutoff: string) {
     if (previous === undefined || previous < timestamp) {
       timestamps.set(bar.sessionDate, timestamp);
       chosen.set(bar.sessionDate, { ...bar, availableAt, seriesId });
+      ambiguous.delete(bar.sessionDate);
+    } else if(strictRevisionSelection&&previous===timestamp&&identity(chosen.get(bar.sessionDate)!)!==identity({...bar,availableAt,seriesId})) {
+      ambiguous.add(bar.sessionDate);
     }
   };
   for (const record of records) {
@@ -53,6 +58,7 @@ export async function snapshot(service: Service, code: string, cutoff: string) {
     }
   }
   if (!revisionCount) for (const bar of await service.history(code)) choose(bar);
+  if(strictRevisionSelection&&ambiguous.size)throw Error("同順位revisionの内容が矛盾しています");
   return [...chosen.values()].sort((a, b) =>
     a.sessionDate.localeCompare(b.sessionDate),
   );
