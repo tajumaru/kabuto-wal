@@ -9,26 +9,28 @@ import { readFile } from "node:fs/promises";
 
 it("writer lock計測はimport時に実行しない",()=>expect(typeof benchmarkScoutWriterLock).toBe("function"));
 
-it("保存のない集計中も別Serviceの通常writerが待機上限に達する（現状の再現）",async()=>{
+it("保存のない集計中に別Serviceの通常writerが待機上限内に保存できる",async()=>{
  const f=await scoutScaleFixture(2),other=new Service(f.root,"demo",false);
  let entered!:()=>void,release!:()=>void;
  const ready=new Promise<void>(r=>{entered=r;}),gate=new Promise<void>(r=>{release=r;});
  const aggregation=cachedScoutAccuracy(f.s,"held-without-save",f.now,async()=>{entered();await gate;return 42;},v=>v,true);
  try{
   await ready;
-  await expect(other.store.lock(()=>other.store.write("jobs/probe.json",{}),40)).rejects.toThrow("別の処理");
-  expect(await other.store.read("jobs/probe.json",null)).toBeNull();
+  await other.store.lock(()=>other.store.write("jobs/probe.json",{ok:true}),40);
+  expect(await other.store.read("jobs/probe.json")).toEqual({ok:true});
   release();expect(await aggregation).toBe(42);
   await other.store.lock(()=>other.store.write("jobs/probe.json",{ok:true}),1000);
   expect(await other.store.read("jobs/probe.json")).toEqual({ok:true});
  }finally{release();await aggregation;await f.cleanup();}
 });
 
-it("評価原本が全件保存済みでも初回・キャッシュ検証でロックを取得する",async()=>{
+it("評価原本が全件保存済みなら初回・キャッシュ検証・ページ変更でロックを取得しない",async()=>{
  const f=await scoutScaleFixture(2),lock=vi.spyOn(f.s.store,"lock"),write=vi.spyOn(f.s.store,"write");
  try{
-  await scoutAccuracy(f.s,{},f.now);expect(lock).toHaveBeenCalledTimes(1);expect(write).not.toHaveBeenCalled();
-  await scoutAccuracy(f.s,{},f.now);expect(lock).toHaveBeenCalledTimes(2);expect(write).not.toHaveBeenCalled();
+  await scoutAccuracy(f.s,{pageSize:1},f.now);
+  await scoutAccuracy(f.s,{pageSize:1},f.now);
+  await scoutAccuracy(f.s,{pageSize:1,page:2},f.now);
+  expect(lock).not.toHaveBeenCalled();expect(write).not.toHaveBeenCalled();
  }finally{lock.mockRestore();write.mockRestore();await f.cleanup();}
 });
 
