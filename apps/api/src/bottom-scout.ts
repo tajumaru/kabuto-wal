@@ -1,3 +1,4 @@
+import { companyMaterials } from "./earnings";
 import type { Service } from "./service";
 import type { Bar, Calendar } from "../../../packages/core/index";
 import {
@@ -412,7 +413,10 @@ export async function scoutResearch(
     reportId: report.reportId,
     scope: report.scope,
     recordingMode: report.recordingMode,
-    rows,
+    rows: await Promise.all(rows.map(async row => ({...row,
+      risks: row.risks.filter(r => r !== "決算・ニュースは未確認です"),
+      companyMaterials: await companyMaterials(s,row.code,report.cutoff),
+    }))),
     notes: report.notes,
   });
 }

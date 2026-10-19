@@ -1,3 +1,4 @@
+import { companyMaterialsSchema } from "./earnings-schema";
 import { z } from "zod";
 import { bottomAnalysisSchema } from "./bottom-schema";
 import { SCOUT_METHOD } from "./bottom-scout-score";
@@ -36,6 +37,7 @@ export const scoutSimilarSchema = z.object({
   warnings: z.array(z.string()),
 });
 export const scoutRowSchema = z.object({
+  companyMaterials: companyMaterialsSchema.optional(),
   hunterJobId: z.string().uuid().nullable(),
   code: z.string().regex(/^[0-9A-Z]{5}$/),
   name: z.string(),
