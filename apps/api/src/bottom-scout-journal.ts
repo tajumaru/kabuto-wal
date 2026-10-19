@@ -18,6 +18,7 @@ import { SCOUT_BASE, readScoutReport } from "./bottom-scout";
 import { SCOUT_METHOD } from "../../../packages/core/bottom-scout-score";
 import { z } from "zod";
 import { cohortPricePath,cohortPathOutcome } from "./hunter-cohort-evaluation";
+import { forecastKey,readScoutForecast } from "./bottom-scout-forecast";
 export async function currentScoutSeries(s: Service, code: string, now: Date) {
   return (
     (await readDerivedSeries(s.store, code, undefined, now.toISOString()))
@@ -30,6 +31,7 @@ export function scoutOutcome(
   horizon: number,
   calendar: Calendar,
   now: Date,
+  requireIntradayLow = true,
 ) {
   const empty = {
     status: "unavailable" as const,
@@ -57,14 +59,14 @@ export function scoutOutcome(
       reason: "評価期限がまだ確定していません",
     };
   const valid=cohortPricePath(bars,asOf,target,calendar,now.toISOString()),metrics=cohortPathOutcome(bars,asOf,target,calendar,now.toISOString());
-  if(!valid||!metrics||valid.length!==horizon+1||valid.some(b=>!Number.isFinite(b.adjLow)||b.adjLow!<=0||b.adjLow!>b.adjClose!))return {...empty,target};
+  if(!valid||!metrics||valid.length!==horizon+1||(requireIntradayLow&&valid.some(b=>!Number.isFinite(b.adjLow)||b.adjLow!<=0||b.adjLow!>b.adjClose!)))return {...empty,target};
   const
     base = valid[0].adjClose!;
   return {
     status: "evaluated" as const,
     reason: "期限後の同一調整系列で評価（元の判定は不変）",
     actualReturn: valid.at(-1)!.adjClose! / base - 1,
-    maxDecline: Math.min(0, ...valid.slice(1).map((b) => b.adjLow! / base - 1)),
+    maxDecline: valid.every(b=>Number.isFinite(b.adjLow)&&b.adjLow!>0&&b.adjLow!<=b.adjClose!)?Math.min(0, ...valid.slice(1).map((b) => b.adjLow! / base - 1)):null,
     revisionIds: valid.map((b) => b.revisionId),
     target,up:metrics.up,maxRise:metrics.maxRise,maxDrawdown:metrics.maxDrawdown,relapse:metrics.relapse,basePrice:metrics.basePrice,targetPrice:metrics.targetPrice,dataAvailableAt:metrics.dataAvailableAt,
   };
@@ -75,6 +77,13 @@ export async function evaluateScout(
   now = new Date(),
   options: {calendar?:Calendar;calendarIssue?:string;requiredTargets?:Record<string,string|null>;benchmarkCode?:string|null;forecastId?:string;loadSeries?:(code:string)=>Promise<Bar[]>} = {},
 ) {
+  if(!options.forecastId&&await s.store.read(forecastKey(report),null)){
+    const {forecast:p,report:original}=await readScoutForecast(s,forecastKey(report));
+    if(hash(original)!==hash(report))throw Error("評価対象が予測原本と一致しません");
+    const current=await s.store.read<Calendar>("market/calendar.json",[]),end=p.calendar.at(-1)?.date??p.asOf;
+    const known=current.filter(d=>d.date>=p.asOf&&d.date<=end).sort((a,b)=>a.date.localeCompare(b.date));
+    options={...options,forecastId:p.forecastId,calendar:p.calendar,requiredTargets:p.targets,benchmarkCode:p.benchmarkCode,calendarIssue:hash(known)!==p.calendarHash?"予測時点の営業日カレンダーから変更されています":undefined};
+  }
   const calendar = options.calendar??await s.store.read<Calendar>("market/calendar.json", []),
     configured = process.env.SCOUT_BENCHMARK_CODE,
     benchmarkCode =
@@ -90,8 +99,8 @@ export async function evaluateScout(
       const raw = scoutOutcome(bars, report.asOf, horizon, calendar, now),
         issue=options.calendarIssue??(options.requiredTargets&&!options.requiredTargets[String(horizon)]?"予測時点の営業日期限が固定できていません":null),
         outcome=issue?{...scoutOutcome([],report.asOf,horizon,calendar,now),status:"unavailable" as const,reason:issue}:raw,
-        baseline = benchmarkCode
-          ? scoutOutcome(benchmark, report.asOf, horizon, calendar, now)
+        baseline = benchmarkCode && !issue
+          ? scoutOutcome(benchmark, report.asOf, horizon, calendar, now,false)
           : null;
       rows.push({
         code: r.code,
@@ -174,13 +183,13 @@ export async function evaluateScout(
   review.evaluationId=identity(review);
   const evaluationKey = `${SCOUT_BASE}/evaluations/${report.reportId}/${review.evaluationId}/original.json`;
   const existing=await s.store.read(evaluationKey,null);
-  if(existing){const parsed=scoutReviewSchema.parse(existing);if(identity(parsed)!==review.evaluationId)throw Error("評価原本hashが一致しません");return parsed;}
+  if(existing){const parsed=scoutReviewSchema.parse(existing);if(parsed.evaluationId!==review.evaluationId||identity(parsed)!==review.evaluationId)throw Error("評価原本hashが一致しません");return parsed;}
   try {
     await s.store.write(evaluationKey, review, true);
   } catch (error) {
     // Identical repeated evaluations reuse their immutable original.
     const existing = await s.store.read(evaluationKey, null);
-    if (!existing || identity(scoutReviewSchema.parse(existing)) !== review.evaluationId) throw error;
+    if (!existing || existing.evaluationId!==review.evaluationId || identity(scoutReviewSchema.parse(existing)) !== review.evaluationId) throw error;
     return scoutReviewSchema.parse(existing);
   }
   return review;
@@ -214,6 +223,7 @@ export async function reviewScoutQuestion(
     asOf: report?.asOf ?? null,
     answeredAt: now.toISOString(),
     reportId: report?.reportId ?? null,
+    recordingMode: report?.recordingMode,
     mode: s.mode === "demo" ? "demo" : "research",
     source: s.mode === "demo" ? "fixture" : "jquants-v2",
     scope: report?.scope ?? null,

@@ -411,6 +411,7 @@ export async function scoutResearch(
     asOf: report.asOf,
     reportId: report.reportId,
     scope: report.scope,
+    recordingMode: report.recordingMode,
     rows,
     notes: report.notes,
   });

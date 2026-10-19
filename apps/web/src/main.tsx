@@ -43,6 +43,7 @@ const KabumaruResearch = lazy(() => import("./KabumaruResearch").then(m => ({ de
 const KabumaruNotebook = lazy(() => import("./KabumaruNotebook").then(m => ({ default: m.KabumaruNotebook })));
 const KabumaruLab = lazy(() => import("./KabumaruLab").then(m => ({ default: m.KabumaruLab })));
 const KabumaruAgent = lazy(() => import("./KabumaruAgent").then(m => ({ default: m.KabumaruAgent })));
+const ScoutAccuracy = lazy(() => import("./ScoutAccuracy").then(m => ({ default: m.ScoutAccuracy })));
 const BottomHunter = lazy(() => import("./BottomHunter").then(m => ({ default: m.BottomHunter })));
 import { DailyFetch } from "./DailyFetch";
 import { MemoryContent, memoryKindLabel, memorySyncLabel } from "./MemoryContent";
@@ -286,6 +287,7 @@ function App() {
             <Route path="/research/notebook" element={<KabumaruNotebook request={api} />} />
             <Route path="/research/lab" element={<KabumaruLab request={api} />} />
             <Route path="/research/agent" element={<KabumaruAgent request={api} />} />
+            <Route path="/research/accuracy" element={<ScoutAccuracy request={api} />} />
             <Route path="/predictions" element={<Predictions />} />
             <Route path="/memories" element={<Memories />} />
             <Route path="/settings" element={<Settings />} />

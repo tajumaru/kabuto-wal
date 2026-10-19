@@ -96,6 +96,7 @@ export function KabumaruResearch({ request }: { request: Request }) {
       </details>
       <details className="card"><summary>保存済み実市場データの診断</summary><p>この1銘柄の取得状況・調整系列・revision・類似件数を確認します。J-Quantsへの追加取得は行いません。</p><button disabled={busy} onClick={() => void act("diagnostic")}>ローカル診断を実行</button>{diagnostic !== null && <pre>{JSON.stringify(diagnostic,null,2)}</pre>}</details>
       <Link to="/research/notebook">かぶまる研究ノート</Link>
+      <Link to="/research/accuracy">予測の答え合わせ</Link>
       <Suspense fallback={<p role="status">研究ノートの質問を読み込み中…</p>}><NotebookQuestions key={result.researchId} request={request} research={{code:result.code,asOf:result.asOf,jobId:result.jobId??undefined,researchId:result.researchId}}/></Suspense>
       <button aria-expanded={reportOpen} onClick={()=>setReportOpen(!reportOpen)}>実績検証レポートを{reportOpen?"閉じる":"表示"}</button>
       {reportOpen&&<Suspense fallback={<p role="status">検証画面を読み込み中…</p>}><ResearchOutcomes request={request} jobId={result.jobId} /></Suspense>}

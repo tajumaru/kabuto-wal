@@ -122,6 +122,7 @@ export const scoutReviewSchema = z.object({
   notes: z.array(z.string()),
 });
 export const scoutReplySchema = z.object({
+  recordingMode: z.enum(["live","research"]).optional(),
   methodVersion: z.literal(SCOUT_METHOD),
   status: z.enum([
     "ready",

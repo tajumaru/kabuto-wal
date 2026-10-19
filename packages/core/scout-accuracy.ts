@@ -14,7 +14,8 @@ export const accuracyPredictionSchema=z.object({
   forecastId:scoutId,reportId:scoutId,predictedAt:z.string().datetime(),algorithmVersion:z.literal("bottom-scout-v1"),inputHash:scoutId,
   rank:z.number().int(),referencePrice:nullable,included:z.boolean(),exclusionReason:z.string().nullable(),
   evidence:scoutRowSchema.omit({chart:true,similar:true}).extend({similar:scoutSimilarSchema.pick({sampleCount:true,bestSimilarity:true,horizons:true,lowSample:true}).nullable()}),
-  results:z.array(accuracyResultSchema),
+  results:z.array(accuracyResultSchema).length(3).refine(rows=>new Set(rows.map(r=>r.horizon)).size===3,"5・10・20営業日後の評価が必要です"),
+  reflection:z.object({selection:z.string(),outcomes:z.array(z.object({horizon:z.number(),text:z.string(),evidenceIds:z.array(z.string()),similarSuccesses:z.array(z.object({forecastId:scoutId,reportId:scoutId,code:z.string(),matchedConditions:z.array(z.string())}))})),cautions:z.array(z.string())}).optional(),
 });
 export type AccuracyPrediction=z.infer<typeof accuracyPredictionSchema>;
 export const accuracyMetricSchema=z.object({
@@ -58,4 +59,17 @@ export function summarizeAccuracy(predictions:AccuracyPrediction[]){
     }conditions.push(...map.values());
   }
   return {groups,top,bands,conditions};
+}
+export function reflectAccuracy(predictions:AccuracyPrediction[]){
+  const pct=(v:number)=>`${v>0?"+":""}${(v*100).toFixed(2)}%`;
+  for(const p of predictions){
+    const conditions=p.evidence.contributions.filter(c=>c.met);
+    p.reflection={selection:`選定時は${p.evidence.score}点。「${conditions.map(c=>c.label).join("、")||"成立条件の記録なし"}」を根拠に保存した候補だよ。点数は確率ではないよ。`,outcomes:p.results.map(r=>{
+      const similarSuccesses=r.status==="evaluated"?predictions.filter(other=>other.included&&(other.evidence.code!==p.evidence.code||other.evidence.asOf!==p.evidence.asOf)).flatMap(other=>{
+        const result=other.results.find(x=>x.horizon===r.horizon),matched=other.evidence.contributions.filter(c=>c.met&&conditions.some(x=>x.code===c.code)).map(c=>c.label);
+        return result?.status==="evaluated"&&result.actualReturn!==null&&result.actualReturn>0&&matched.length>=2?[{forecastId:other.forecastId,reportId:other.reportId,code:other.evidence.code,matchedConditions:matched}]:[];
+      }).slice(0,3):[];
+      return {horizon:r.horizon,text:r.status==="evaluated"?`${r.horizon}営業日後は${pct(r.actualReturn!)}で、${r.actualReturn!>0?"定義上の的中":"不的中"}。最大終値ドローダウン${pct(r.maxDrawdown!)}、再下落${r.relapse?"あり":"なし"}。`:r.status==="pending"?`${r.horizon}営業日後は評価待ち。まだ成績に数えないよ。`:`${r.horizon}営業日後は評価不能：${r.reason}。成功にも失敗にも数えないよ。`,evidenceIds:[p.forecastId,p.reportId,r.evaluationId],similarSuccesses};
+    }),cautions:[...p.evidence.risks,"似た条件の成功例があっても、次回の成功や因果関係を保証しません。再下落・流動性・対象範囲を確認してください。"]};
+  }
 }
