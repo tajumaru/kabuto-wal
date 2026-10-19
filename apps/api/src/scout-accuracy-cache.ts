@@ -1,5 +1,6 @@
 import type { Service } from "./service";
 import { hash } from "../../../packages/integrations/adjusted-series";
+import { scoutAccuracyBatch } from "./scout-accuracy-io";
 
 type Entry<T>={at:number;until:number;value:T;reads:Map<string,{fallback:unknown;digest:string}>;lists:Map<string,string[]>};
 const caches=new WeakMap<Service,Map<string,Entry<unknown>>>();
@@ -9,11 +10,10 @@ export async function cachedScoutAccuracy<T>(s:Service,key:string,now:Date,compu
  let entries=caches.get(s);if(!entries){entries=new Map();caches.set(s,entries);}
  const old=entries.get(key) as Entry<T>|undefined,at=now.getTime();
  if(old&&at>=old.at&&at<old.until){
-  let valid=true;
-  for(const [prefix,files] of old.lists)if(hash((await s.store.files(prefix)).sort())!==hash(files)){valid=false;break;}
-  if(valid)for(const [file,{fallback,digest}] of old.reads){
-   try{if(hash(await s.store.read(file,fallback))!==digest){valid=false;break;}}catch{valid=false;break;}
-  }
+  let valid=(await scoutAccuracyBatch([...old.lists],async([prefix,files])=>hash((await s.store.files(prefix)).sort())===hash(files))).every(Boolean);
+  if(valid)valid=(await scoutAccuracyBatch([...old.reads],async([file,{fallback,digest}])=>{
+   try{return hash(await s.store.read(file,fallback))===digest;}catch{return false;}
+  })).every(Boolean);
   if(valid)return structuredClone(old.value);
  }
  const reads:Entry<T>["reads"]=new Map(),lists:Entry<T>["lists"]=new Map(),memo=new Map<string,Promise<unknown>>();
@@ -41,7 +41,7 @@ export async function cachedScoutAccuracy<T>(s:Service,key:string,now:Date,compu
  const view=Object.create(s) as Service;view.store=store;
  const value=await compute(view);
  // Do not bless files added concurrently by another writer as inputs we have read.
- for(const [prefix,files] of lists)if(hash((await s.store.files(prefix)).sort())!==hash(files))return value;
+ if(!(await scoutAccuracyBatch([...lists],async([prefix,files])=>hash((await s.store.files(prefix)).sort())===hash(files))).every(Boolean))return value;
  if(entries.size>=4)entries.delete(entries.keys().next().value!);
  entries.set(key,{at,until,value:structuredClone(value),reads,lists});return value;
 }

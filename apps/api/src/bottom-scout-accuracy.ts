@@ -8,6 +8,7 @@ import { forecastBase,readScoutForecast } from "./bottom-scout-forecast";
 import { hash } from "../../../packages/integrations/adjusted-series";
 import { scoutMarketRegime } from "./scout-market-regime";
 import { cachedScoutAccuracy } from "./scout-accuracy-cache";
+import { scoutAccuracyBatch } from "./scout-accuracy-io";
 import { evaluateScout,currentScoutSeries } from "./bottom-scout-journal";
 export const accuracyQuerySchema=z.object({page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(5).default(5),recordingMode:z.enum(["live","research"]).default("live"),reportId:scoutId.optional()}).strict();
 export async function scoutAccuracy(s:Service,raw:unknown={},now=new Date(),options:{persist?:boolean}={}){
@@ -21,9 +22,9 @@ async function computeScoutAccuracy(s:Service,raw:unknown,now:Date,options:{pers
   const load=(code:string)=>{let p=cache.get(code);if(!p){p=currentScoutSeries(s,code,now);cache.set(code,p);}return p;};
   const detailFiles=files.filter(f=>!q.reportId||f.endsWith(`/${q.reportId}/original.json`)),selected=new Set(detailFiles.slice((q.page-1)*q.pageSize,q.page*q.pageSize));
   const calendar=await s.store.read("market/calendar.json",[]);
-  for(const file of files){
+  await scoutAccuracyBatch(files,async file=>{
     const {forecast:p,report}=await readScoutForecast(s,file);
-    if(p.createdAt>now.toISOString()){excludedReports++;continue;}if(selected.has(file))selectedReports++;
+    if(p.createdAt>now.toISOString()){excludedReports++;return;}if(selected.has(file))selectedReports++;
         // Verify every saved evaluation original for this report, not just the newly computed ID.
     for(const key of (await s.store.files(`research/scout/evaluations/${p.reportId}`)).filter(f=>f.endsWith("/original.json"))){
       const saved=scoutReviewSchema.parse(await s.store.read(key));
@@ -40,7 +41,9 @@ async function computeScoutAccuracy(s:Service,raw:unknown,now:Date,options:{pers
       const results=review.rows.filter(r=>r.code===row.code).map(r=>({...r,...(row.referencePrice===null?{status:"unavailable",actualReturn:null,up:null,maxRise:null,maxDrawdown:null,relapse:null,basePrice:null,targetPrice:null,revisionIds:[],benchmarkReturn:null,benchmarkRevisionIds:[],reason:"予測時点の基準価格がありません"}:{}),evaluationId:review.evaluationId,benchmarkCode:p.benchmarkCode}));
       predictions.push(accuracyPredictionSchema.parse({...regime,forecastId:p.forecastId,reportId:p.reportId,predictedAt:p.createdAt,algorithmVersion:p.algorithmVersion,inputHash:p.inputHash,rank:row.rank,referencePrice:row.referencePrice,included:true,exclusionReason:null,evidence:{...e,similar:e.similar?{sampleCount:e.similar.sampleCount,bestSimilarity:e.similar.bestSimilarity,horizons:e.similar.horizons,lowSample:e.similar.lowSample}:null},results}));
     }
-  }
+  });
+  // Concurrent I/O must not change accumulation order, tie-breaking or page order.
+  predictions.sort((a,b)=>b.predictedAt.localeCompare(a.predictedAt)||b.reportId.localeCompare(a.reportId)||a.rank-b.rank);
     const summary=summarizeAccuracy(predictions);
   const regimes=(["up","down","flat","unknown"] as const).flatMap(regime=>[5,10,20].map(h=>({...accuracyMetrics(predictions.filter(p=>p.regime===regime),h),regime})));
   const cumulative={predictions:predictions.length,included:predictions.filter(p=>p.included).length,duplicates:predictions.filter(p=>!p.included).length};
