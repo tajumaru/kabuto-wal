@@ -4,9 +4,9 @@ import { pathToFileURL } from "node:url";
 
 // Read-only inventory. No Service construction, dotenv, SDK, or network access.
 export async function auditLegacyLabPlans(root: string) {
-  const report = { root: path.resolve(root), status: "confirmed", legacy: [] as { planId: string; createdAt: string | null }[], modern: 0, invalid: 0, references: [] as { file: string; relation: "direct" | "indirect" }[], errors: [] as string[] };
-  try { await readdir(root); } catch { return { ...report, status: "unconfirmed", modern: null }; }
-  const resolved = await realpath(root);
+  const report = { root: path.resolve(root), status: "confirmed", legacyCount:0 as number|null, legacy: [] as { planId: string; createdAt: string | null }[], modern: 0, invalid: 0, references: [] as { file: string; relation: "direct" | "indirect" }[], errors: [] as string[] };
+  let resolved:string;
+  try { await readdir(root); resolved=await realpath(root); } catch { return { ...report, status: "unconfirmed", legacyCount:null, modern: null }; }
   async function files(prefix: string): Promise<string[]> {
     const result: string[] = [];
     async function walk(key: string) {
@@ -55,7 +55,7 @@ export async function auditLegacyLabPlans(root: string) {
         const visit = (row: unknown) => {
           if (!row || typeof row !== "object") return;
           for (const [key, value] of Object.entries(row)) {
-            if (["planId", "runId", "reportId", "sessionId", "recordId", "researchManifestHash"].includes(key) && typeof value === "string" && /^[a-f0-9-]{32,64}$/.test(value)) linked.add(value);
+            if (["planId", "runId", "reportId", "sessionId", "recordId", "researchManifestHash", "manifestHash", "attestationId"].includes(key) && typeof value === "string" && /^[a-f0-9-]{32,64}$/.test(value)) linked.add(value);
             else if (value && typeof value === "object") visit(value);
           }
         };
@@ -63,6 +63,7 @@ export async function auditLegacyLabPlans(root: string) {
       }
     }
   }
+  report.legacyCount=report.legacy.length;
   if (report.errors.length) report.status = "partial";
   return report;
 }

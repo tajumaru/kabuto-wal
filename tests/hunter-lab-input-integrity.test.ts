@@ -38,7 +38,7 @@ for (const mutation of ["calendar", "missing", "content", "cutoff"] as const) {
   });
 }
 
-it("後日追加評価を固定集合へ混ぜず、旧形式の計画も書換えずに検証する", async () => {
+it("後日追加評価を固定集合へ混ぜず、旧形式の計画を書換えずに実行拒否する", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "lab-addition-")), s = new Service(root, "demo", false);
   try {
     const input = await labFixture(s, 1), p = await createLabPlan(s, input, new Date("2025-01-04T00:00:00Z"));
@@ -50,7 +50,7 @@ it("後日追加評価を固定集合へ混ぜず、旧形式の計画も書換�
     void unused; void unusedHashes;
     const legacyId=hash(legacyBody),legacy={...legacyBody,planId:legacyId},legacyKey=`research/lab/plans/${legacyId}/original.json`;
     await s.store.write(legacyKey,legacy,true);
-    expect(await verifyLabPlanInputs(s,legacyId)).toEqual(legacy);
+    await expect(verifyLabPlanInputs(s,legacyId)).rejects.toThrow("旧形式");
     expect(await s.store.read(legacyKey)).toEqual(legacy);
     const m = await createLabMethod(s, { name: "test", hypothesis: "fixed inputs", parameters: labDefaultWeights, candidateThreshold: 60 });
     await changeLabState(s, m.experimentId, { status: "testing", reason: "test", confirm: true });
