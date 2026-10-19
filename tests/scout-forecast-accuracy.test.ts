@@ -1,4 +1,4 @@
-import { it,expect } from "vitest";
+import { it,expect,vi } from "vitest";
 import { mkdtemp,rm } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -9,6 +9,7 @@ import { readScoutForecast,forecastBase } from "../apps/api/src/bottom-scout-for
 import { readScoutReport } from "../apps/api/src/bottom-scout";
 import { scoutOutcome } from "../apps/api/src/bottom-scout-journal";
 import { demoBars } from "../fixtures/demo";
+import { scoutAccuracy } from "../apps/api/src/bottom-scout-accuracy";
 it("予測時点の順位・価格・根拠hash・営業日期限を固定し、未来の改訂で原本を変更しない",async()=>{
   const root=await mkdtemp(path.join(os.tmpdir(),"forecast-fixed-")),s=new Service(root,"demo",false);
   try{
@@ -24,6 +25,35 @@ it("予測時点の順位・価格・根拠hash・営業日期限を固定し、
     expect(JSON.stringify(await readScoutReport(s,report.reportId))).toBe(original);
     expect(await s.store.files(forecastBase("demo","live"))).toHaveLength(1);
   }finally{await rm(root,{recursive:true,force:true});}
+});
+it("評価待ち・不能を分母から除外し、TOP3/5/10と同一ペアの市場超過を集計する",async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),"forecast-score-")),s=new Service(root,"demo",false),network=vi.spyOn(globalThis,"fetch").mockRejectedValue(Error("forbidden"));vi.stubEnv("SCOUT_BENCHMARK_CODE","99990");
+  try{
+    const f=await scoutFixture(s,6);await scoutChat(s,"底打ち候補を10銘柄",undefined,f.now);
+    const seed=await s.history(f.master[0].providerCode);
+    await s.store.write("prices/99990/fixture.json",seed.map((b,i)=>({...b,providerCode:"99990",seriesId:"benchmark",revisionId:`benchmark-${i}`,adjClose:b.sessionDate>f.asOf?84:b.adjClose,adjLow:b.sessionDate>f.asOf?83:b.adjLow})));
+    for(const [i,m] of f.master.entries()){
+      const bars=await s.history(m.providerCode);
+      if(i===1)await s.store.write(`prices/${m.providerCode}/fixture.json`,bars.map(b=>b.sessionDate>f.asOf?{...b,adjClose:80,adjLow:79,revisionId:`fall-${b.sessionDate}`}:b));
+      if(i===2)await s.store.write(`prices/${m.providerCode}/fixture.json`,bars.filter(b=>b.sessionDate!==f.dates[324]));
+    }
+    const pending=await scoutAccuracy(s,{},f.now);expect(pending.groups.every(g=>g.evaluated===0&&g.pending===6&&g.hitRate===null)).toBe(true);
+    const now=new Date(`${f.dates[345]}T12:00:00.000Z`),a=await scoutAccuracy(s,{},now),g=a.groups.find(g=>g.horizon===5)!;
+    expect(g).toMatchObject({total:6,evaluated:5,pending:0,unavailable:1,hits:4,misses:1,benchmarkPairs:5,outperformanceRate:.8});expect(g.hitRate).toBe(.8);
+    expect(a.top.find(g=>g.horizon===5&&g.top===3)?.hitRate).toBe(.5);
+    expect(a.top.find(g=>g.horizon===5&&g.top===5)?.hitRate).toBe(.75);
+    expect(a.top.find(g=>g.horizon===5&&g.top===10)?.evaluated).toBe(5);
+    expect(g.meanExcessReturn).toBeCloseTo(g.pairedPredictionMean!);expect(g.benchmarkMean).toBe(0);
+    expect(a.predictions[0].referencePrice).toBe(84);expect(a.conditions.some(c=>c.failures>0)).toBe(true);
+    const count=(await s.store.files("research/scout/evaluations")).length;
+    await scoutAccuracy(s,{},new Date(`${f.dates[346]}T12:00:00.000Z`));expect((await s.store.files("research/scout/evaluations")).length).toBe(count);
+    expect((await scoutAccuracy(s,{recordingMode:"research"},now)).totalReports).toBe(0);
+    await s.store.write("prices/99990/fixture.json",[]);
+    expect((await scoutAccuracy(s,{},now)).groups.every(g=>g.benchmarkPairs===0&&g.meanExcessReturn===null)).toBe(true);
+    await s.store.write("market/calendar.json",f.dates.map(date=>({date,open:date!==f.dates[320]})));
+    expect((await scoutAccuracy(s,{},now)).groups.every(g=>g.evaluated===0&&g.unavailable===6&&g.hitRate===null)).toBe(true);
+    expect(network).not.toHaveBeenCalled();
+  }finally{network.mockRestore();vi.unstubAllEnvs();await rm(root,{recursive:true,force:true});}
 });
 it("市場営業日・期限・決定的revision・ドローダウン・再下落を同じ評価経路で扱う",()=>{
   const calendar=Array.from({length:50},(_,i)=>{const d=new Date(Date.UTC(2026,0,5+i)),date=d.toISOString().slice(0,10);return {date,open:![0,6].includes(d.getUTCDay())&&date!=="2026-01-12"};}),dates=calendar.filter(d=>d.open).map(d=>d.date);

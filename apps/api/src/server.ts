@@ -5,6 +5,7 @@ import { registerHunterLab } from "./hunter-experiment-api";
 import { registerKabumaruAgent } from "./kabumaru-agent-api";
 import { parseScoutIntent } from "../../../packages/core/bottom-scout-intent";
 import { scoutChat } from "./bottom-scout-chat";
+import { registerScoutAccuracy } from "./bottom-scout-accuracy";
 import { registerScoutMemory,saveScoutMemory } from "./bottom-scout-memory";
 import { searchDejavuContext } from "./hunter-research";
 import { notifyDejavu, saveDejavu, recallDejavu } from "./dejavu";
@@ -109,6 +110,7 @@ export async function createApp(
   registerHunterLab(app, service);
   registerKabumaruAgent(app, service, allowedOrigins);
   registerScoutMemory(app,service,allowedOrigins);
+  registerScoutAccuracy(app,service);
   app.get("/api/auth/challenge", async () =>
     service.store.lock(async () => {
       const nonce = randomBytes(32).toString("hex"),
