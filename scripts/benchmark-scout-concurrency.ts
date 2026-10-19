@@ -37,13 +37,13 @@ export async function benchmarkScoutConcurrency(sizes:number[],baseline:typeof s
     emit({stage:"sample",size,implementation,run,name:"concurrent",...sample});
    }
    const probeService=new Service(f.root,"demo",false),probe=()=>api(probeService,{pageSize:1},f.now,{persist:false});
-   await probe();const originalRead=probeService.store.read.bind(probeService.store),key=`research/scout/reports/${f.lastReport.reportId}/original.json`;
-   let changed=false;probeService.store.read=async(file,fallback)=>{
-    const value=await originalRead(file,fallback);
+   await probe();const originalRead=probeService.store.readBytes.bind(probeService.store),key=`research/scout/reports/${f.lastReport.reportId}/original.json`;
+   let changed=false;probeService.store.readBytes=async file=>{
+    const value=await originalRead(file);
     if(file===key&&!changed){changed=true;await f.json(key,{...f.lastReport,inputHash:"0".repeat(64)});}
     return value;
    };
-   let rejected=false;try{await probe();}catch{rejected=true;}finally{await f.json(key,f.lastReport);probeService.store.read=originalRead;}
+   let rejected=false;try{await probe();}catch{rejected=true;}finally{await f.json(key,f.lastReport);probeService.store.readBytes=originalRead;}
    emit({stage:"result",size,implementation,latency:Object.fromEntries(Object.entries(samples).map(([k,v])=>[k,percentiles(v.map(x=>x.ms))])),samples,race:{mutationInjected:changed,tamperDuringReadRejected:rejected}});
   }}finally{await f.cleanup();}
  }}finally{globalThis.fetch=originalFetch;}

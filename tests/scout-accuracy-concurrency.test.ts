@@ -46,8 +46,8 @@ it("キャッシュ検証の読み取り途中で内容だけが変わっても�
  try{
   await f.json("probe.json",{n:1});const compute=(s:Service)=>s.store.read("probe.json");
   await cachedScoutAccuracy(f.s,"validation",f.now,compute);
-  const read=f.s.store.read.bind(f.s.store);let changed=false;
-  f.s.store.read=async(key,fallback)=>{const value=await read(key,fallback);if(key==="probe.json"&&!changed){changed=true;await f.json(key,{n:2});}return value;};
+  const read=f.s.store.readBytes.bind(f.s.store);let changed=false;
+  f.s.store.readBytes=async key=>{const value=await read(key);if(key==="probe.json"&&!changed){changed=true;await f.json(key,{n:2});}return value;};
   expect(await cachedScoutAccuracy(f.s,"validation",f.now,compute)).toEqual({n:2});
  }finally{await f.cleanup();}
 });

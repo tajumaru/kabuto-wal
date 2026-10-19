@@ -1,19 +1,30 @@
 import type { Service } from "./service";
 import { hash } from "../../../packages/integrations/adjusted-series";
 import { scoutAccuracyBatch } from "./scout-accuracy-io";
+import { createHash } from "node:crypto";
 
-type Read={file:string;digest:string|null};
+type Read={file:string;digest:string|null;bytesDigest?:string};
 type Entry<T>={at:number;until:number;value:T;reads:Map<string,Read>;lists:Map<string,string[]>};
 const caches=new WeakMap<Service,Map<string,Entry<unknown>>>();
 const pending=new WeakMap<Service,Map<string,Promise<Entry<unknown>>>>();
 async function unchanged(s:Service,entry:Pick<Entry<unknown>,"lists"|"reads">){
- const inventories=async()=> (await scoutAccuracyBatch([...entry.lists],async([prefix,files])=>hash((await s.store.files(prefix)).sort())===hash(files))).every(Boolean);
+ const inventories=async()=> (await scoutAccuracyBatch([...entry.lists],async([prefix,files])=>{
+  const current=(await s.store.files(prefix)).sort();
+  return current.length===files.length&&current.every((file,i)=>file===files[i]);
+ })).every(Boolean);
  try{
   for(let pass=0;pass<2;pass++){
    if(!await inventories())return false;
-   if(!(await scoutAccuracyBatch([...entry.reads.values()],async({file,digest})=>{
-    try{return hash(await s.store.read(file))===digest;}
-    catch(error){return digest===null&&(error as NodeJS.ErrnoException).code==="ENOENT";}
+   if(!(await scoutAccuracyBatch([...entry.reads.values()],async read=>{
+    try{
+     const bytes=await s.store.readBytes(read.file),digest=createHash("sha256").update(bytes).digest("hex");
+     if(read.bytesDigest!==undefined)return digest===read.bytesDigest;
+     // Bind byte evidence to the exact parsed input used by computation. Never
+     // trust a raw fingerprint obtained independently of that input's hash.
+     if(hash(JSON.parse(bytes.toString("utf8")))!==read.digest)return false;
+     read.bytesDigest=digest;return true;
+    }
+    catch(error){return read.digest===null&&(error as NodeJS.ErrnoException).code==="ENOENT";}
    })).every(Boolean))return false;
   }
   return await inventories();
@@ -49,9 +60,9 @@ export async function cachedScoutAccuracy<T,R=T>(s:Service,key:string,now:Date,c
    let value=memo.get(file);
    if(!value){value=target.read<unknown>(file);memo.set(file,value);}
    let result:unknown;
-   try{result=await value;reads.set(file,{file,digest:hash(result)});}
-   catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT"||fallback===undefined)throw error;reads.set(file,{file,digest:null});result=fallback;}
-   observe(result);return structuredClone(result);
+   try{result=await value;if(!reads.has(file)){reads.set(file,{file,digest:hash(result)});observe(result);}}
+   catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT"||fallback===undefined)throw error;reads.set(file,{file,digest:null});result=fallback;observe(result);}
+   return structuredClone(result);
   };
   if(property==="files")return async(prefix:string)=>{
    let promise=listing.get(prefix);if(!promise){promise=target.files(prefix).then(files=>{files.sort();lists.set(prefix,files);return files;});listing.set(prefix,promise);}

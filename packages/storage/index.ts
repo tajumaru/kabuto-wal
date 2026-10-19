@@ -13,7 +13,7 @@ const waitingReads: (() => void)[] = [];
 async function readFileLimited(file: string) {
   if (activeReads >= 32) await new Promise<void>((resolve) => waitingReads.push(resolve));
   else activeReads++;
-  try { return await fs.readFile(file, "utf8"); }
+  try { return await fs.readFile(file); }
   finally {
     const next = waitingReads.shift();
     if (next) next();
@@ -37,9 +37,14 @@ export class Store {
       throw Error("不正な保存パス");
     return path.join(this.root, key);
   }
+  // Share the same path validation and process-wide read limit with JSON reads.
+  // Consumers may fingerprint exact bytes without repeatedly parsing JSON.
+  async readBytes(key: string): Promise<Buffer> {
+    return readFileLimited(this.path(key));
+  }
   async read<T = any>(key: string, fallback?: any): Promise<T> {
     try {
-      return JSON.parse(await readFileLimited(this.path(key)));
+      return JSON.parse((await this.readBytes(key)).toString("utf8"));
     } catch (e) {
       if (
         (e as NodeJS.ErrnoException).code === "ENOENT" &&

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
 import type { Service } from "./service";
-import type { Bar } from "../../../packages/core/index";
+import type { Bar,Calendar } from "../../../packages/core/index";
 import { accuracyPredictionSchema,scoutAccuracySchema,accuracyMetrics,summarizeAccuracy,reflectAccuracy,type AccuracyPrediction } from "../../../packages/core/scout-accuracy";
 import { scoutId,scoutReviewSchema } from "../../../packages/core/bottom-scout-schema";
 import { forecastBase,readScoutForecast } from "./bottom-scout-forecast";
@@ -9,7 +9,7 @@ import { hash } from "../../../packages/integrations/adjusted-series";
 import { scoutMarketRegime } from "./scout-market-regime";
 import { cachedScoutAccuracy } from "./scout-accuracy-cache";
 import { scoutAccuracyBatch } from "./scout-accuracy-io";
-import { evaluateScout,currentScoutSeries } from "./bottom-scout-journal";
+import { evaluateScout,currentScoutSeries,fixedScoutEvaluation,createScoutOutcomeCache } from "./bottom-scout-journal";
 export const accuracyQuerySchema=z.object({page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(5).default(5),recordingMode:z.enum(["live","research"]).default("live"),reportId:scoutId.optional()}).strict();
 export async function scoutAccuracy(s:Service,raw:unknown={},now=new Date(),options:{persist?:boolean}={}){
   const query=accuracyQuerySchema.parse(raw);
@@ -25,8 +25,8 @@ async function computeScoutAccuracy(s:Service,raw:unknown,now:Date,options:{pers
   const q=accuracyQuerySchema.parse(raw),mode=s.mode==="demo"?"demo":"research",files=(await s.store.files(forecastBase(mode,q.recordingMode))).filter(f=>/\/\d{17}\/[a-f0-9]{64}\/original.json$/.test(f)).sort().reverse();
   const predictions:AccuracyPrediction[]=[],cache=new Map<string,Promise<Bar[]>>();let excludedReports=0,selectedReports=0;
   const load=(code:string)=>{let p=cache.get(code);if(!p){p=currentScoutSeries(s,code,now);cache.set(code,p);}return p;};
-  const eligible=new Set<string>();
-  const calendar=await s.store.read("market/calendar.json",[]);
+  const eligible=new Set<string>(),fixedCalendars=new Map<string,Calendar>(),calculateOutcome=createScoutOutcomeCache(),regimeCache=new Map<string,Promise<ReturnType<typeof scoutMarketRegime>>>();
+  const calendar=await s.store.read<Calendar>("market/calendar.json",[]);
   await scoutAccuracyBatch(files,async file=>{
     const {forecast:p,report}=await readScoutForecast(s,file);
     if(p.createdAt>now.toISOString()){excludedReports++;return;}selectedReports++;eligible.add(p.reportId);
@@ -38,8 +38,14 @@ async function computeScoutAccuracy(s:Service,raw:unknown,now:Date,options:{pers
     }
     const indexCode=process.env.SCOUT_MARKET_REGIME_INDEX_CODE;
     const benchmarkCode=indexCode&&indexCode===p.benchmarkCode?indexCode:null;
-    const regime=scoutMarketRegime(benchmarkCode?await currentScoutSeries(s,benchmarkCode,new Date(p.cutoff)).catch(()=>[]):[],calendar,p.asOf,p.cutoff,benchmarkCode);
-    const review=await evaluateScout(s,report,now,{persist:options.persist,loadSeries:load,evaluationCodes:p.rows.map(r=>r.code)});
+    const regimeKey=JSON.stringify([benchmarkCode,p.asOf,p.cutoff]);
+    let regimePromise=regimeCache.get(regimeKey);
+    if(!regimePromise){regimePromise=(async()=>scoutMarketRegime(benchmarkCode?await currentScoutSeries(s,benchmarkCode,new Date(p.cutoff)).catch(()=>[]):[],calendar,p.asOf,p.cutoff,benchmarkCode))();regimeCache.set(regimeKey,regimePromise);}
+    const regime=await regimePromise;
+    // readScoutForecast already verified the forecast, report and calendar hash.
+    // Reuse that evidence instead of parsing the same originals again in journal.
+    let fixed=fixedCalendars.get(p.calendarHash);if(!fixed){fixed=p.calendar;fixedCalendars.set(p.calendarHash,fixed);}
+    const review=await evaluateScout(s,report,now,{persist:options.persist,loadSeries:load,evaluationCodes:p.rows.map(r=>r.code),...fixedScoutEvaluation({...p,calendar:fixed},calendar),calculateOutcome});
     if(!review.evaluationId||review.forecastId!==p.forecastId)throw Error("評価原本と予測IDが一致しません");
     for(const row of p.rows){
       const e=report.rows.find(r=>r.code===row.code)!;

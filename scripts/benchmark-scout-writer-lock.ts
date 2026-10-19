@@ -33,8 +33,8 @@ export async function benchmarkScoutWriterLock(sizes:number[],logFile?:string,ba
    const phases:Array<readonly [string,number,number]>=[["cold-with-one-save",1,0]];
    for(let run=0;run<hotRepeats;run++)phases.push(["cache-validation-no-save",1,run],["page2-no-save",2,run]);
    for(const [phase,page,run] of phases){
-    const lock=s.store.lock.bind(s.store),write=s.store.write.bind(s.store),read=s.store.read.bind(s.store);
-    let lockCount=0,holdMs=0,acquireMs=0,saveMs=0,saves=0,sourceReads=0,held=false;
+    const lock=s.store.lock.bind(s.store),write=s.store.write.bind(s.store),read=s.store.read.bind(s.store),readBytes=s.store.readBytes.bind(s.store);
+    let lockCount=0,holdMs=0,acquireMs=0,saveMs=0,saves=0,sourceReads=0,byteReads=0,originalReads=0,held=false,readerStarted=false;
     const writers:Array<Promise<{trigger:string;waitMs:number;writeMs:number;timedOut:boolean}>>=[];
     const startWriter=(trigger:string)=>{
      const start=performance.now();
@@ -48,7 +48,9 @@ export async function benchmarkScoutWriterLock(sizes:number[],logFile?:string,ba
       }
      })());
     };
-    s.store.read=async(key,fallback)=>{if(++sourceReads===1)startWriter("first-source-read");return read(key,fallback);};
+    const startReaderWriter=()=>{if(!readerStarted){readerStarted=true;startWriter("first-source-read");}};
+    s.store.read=async(key,fallback)=>{sourceReads++;startReaderWriter();return read(key,fallback);};
+    s.store.readBytes=async key=>{byteReads++;if(key.endsWith("/original.json"))originalReads++;startReaderWriter();return readBytes(key);};
     s.store.lock=async(fn,waitMs)=>{
      const start=performance.now();
      return lock(async()=>{
@@ -65,9 +67,9 @@ export async function benchmarkScoutWriterLock(sizes:number[],logFile?:string,ba
     const parse=JSON.parse,stringify=JSON.stringify;
     JSON.parse=((...args:Parameters<typeof JSON.parse>)=>{const at=performance.now();jsonParses++;try{return Reflect.apply(parse,JSON,args);}finally{jsonParseMs+=performance.now()-at;}}) as typeof JSON.parse;
     JSON.stringify=((...args:Parameters<typeof JSON.stringify>)=>{const at=performance.now();jsonStringifies++;try{return Reflect.apply(stringify,JSON,args);}finally{jsonStringifyMs+=performance.now()-at;}}) as typeof JSON.stringify;
-    try{metrics=await measure(f.root,()=>api(s,{page,pageSize:1},f.now));}finally{s.store.lock=lock;s.store.write=write;s.store.read=read;JSON.parse=parse;JSON.stringify=stringify;}
+    try{metrics=await measure(f.root,()=>api(s,{page,pageSize:1},f.now));}finally{s.store.lock=lock;s.store.write=write;s.store.read=read;s.store.readBytes=readBytes;JSON.parse=parse;JSON.stringify=stringify;}
     const probes=await Promise.all(writers);
-    emit({stage:"sample",size,implementation,phase,run,lockCount,holdMs,acquireMs,saves,saveMs,sourceReads,jsonParses,jsonParseMs,jsonStringifies,jsonStringifyMs,writers:probes,...metrics});
+    emit({stage:"sample",size,implementation,phase,run,lockCount,holdMs,acquireMs,saves,saveMs,sourceReads,byteReads,originalReads,jsonParses,jsonParseMs,jsonStringifies,jsonStringifyMs,writers:probes,...metrics});
     const identity=`${phase}/${run}`;
     if(implementation==="before")hashes.set(identity,metrics.responseHash);
     else if(hashes.has(identity)&&hashes.get(identity)!==metrics.responseHash)throw Error("baseline and improved responses differ");

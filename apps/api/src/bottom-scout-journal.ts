@@ -17,6 +17,7 @@ import { snapshot } from "./dejavu";
 import { SCOUT_BASE, readScoutReport } from "./bottom-scout";
 import { SCOUT_METHOD } from "../../../packages/core/bottom-scout-score";
 import { z } from "zod";
+import type { ScoutForecast } from "../../../packages/core/scout-forecast-schema";
 import { cohortPricePath,cohortPathOutcome } from "./hunter-cohort-evaluation";
 import { forecastKey,readScoutForecast } from "./bottom-scout-forecast";
 export async function currentScoutSeries(s: Service, code: string, now: Date) {
@@ -71,19 +72,40 @@ export function scoutOutcome(
     target,up:metrics.up,maxRise:metrics.maxRise,maxDrawdown:metrics.maxDrawdown,relapse:metrics.relapse,basePrice:metrics.basePrice,targetPrice:metrics.targetPrice,dataAvailableAt:metrics.dataAvailableAt,
   };
 }
+/** Request-local only. Array identity pins the loaded revision series; the
+ * remaining numerical inputs, cutoff and intraday requirement are all keyed. */
+export function createScoutOutcomeCache():typeof scoutOutcome{
+ const series=new WeakMap<Bar[],Map<string,ReturnType<typeof scoutOutcome>>>(),calendars=new WeakMap<Calendar,string>();
+ return (bars,asOf,horizon,calendar,now,requireIntradayLow=true)=>{
+  let calendarHash=calendars.get(calendar);if(!calendarHash){
+   calendar.forEach(Object.freeze);Object.freeze(calendar);
+   calendarHash=hash(calendar);calendars.set(calendar,calendarHash);
+  }
+  const key=JSON.stringify([asOf,horizon,calendarHash,now.toISOString(),requireIntradayLow]);
+  let outcomes=series.get(bars);if(!outcomes){
+   bars.forEach(Object.freeze);Object.freeze(bars);
+   outcomes=new Map();series.set(bars,outcomes);
+  }
+  let outcome=outcomes.get(key);if(!outcome){outcome=scoutOutcome(bars,asOf,horizon,calendar,now,requireIntradayLow);outcomes.set(key,outcome);}
+  return structuredClone(outcome);
+ };
+}
+export function fixedScoutEvaluation(p:ScoutForecast,current:Calendar){
+ const end=p.calendar.at(-1)?.date??p.asOf;
+ const known=current.filter(d=>d.date>=p.asOf&&d.date<=end).sort((a,b)=>a.date.localeCompare(b.date));
+ return {forecastId:p.forecastId,calendar:p.calendar,requiredTargets:p.targets,benchmarkCode:p.benchmarkCode,calendarIssue:hash(known)!==p.calendarHash?"予測時点の営業日カレンダーから変更されています":undefined};
+}
 export async function evaluateScout(
   s: Service,
   report: ScoutReport,
   now = new Date(),
-  options: {persist?:boolean;calendar?:Calendar;calendarIssue?:string;requiredTargets?:Record<string,string|null>;benchmarkCode?:string|null;forecastId?:string;evaluationCodes?:string[];loadSeries?:(code:string)=>Promise<Bar[]>} = {},
+  options: {persist?:boolean;calendar?:Calendar;calendarIssue?:string;requiredTargets?:Record<string,string|null>;benchmarkCode?:string|null;forecastId?:string;evaluationCodes?:string[];loadSeries?:(code:string)=>Promise<Bar[]>;calculateOutcome?:typeof scoutOutcome} = {},
 ) {
   if(!options.forecastId&&await s.store.read(forecastKey(report),null)){
     const {forecast:p,report:original}=await readScoutForecast(s,forecastKey(report));
     if(hash(original)!==hash(report))throw Error("評価対象が予測原本と一致しません");
     if(options.evaluationCodes&&hash([...options.evaluationCodes].sort())!==hash(p.rows.map(r=>r.code).sort()))throw Error("評価対象が固定上位候補と一致しません");
-    const current=await s.store.read<Calendar>("market/calendar.json",[]),end=p.calendar.at(-1)?.date??p.asOf;
-    const known=current.filter(d=>d.date>=p.asOf&&d.date<=end).sort((a,b)=>a.date.localeCompare(b.date));
-    options={...options,forecastId:p.forecastId,calendar:p.calendar,requiredTargets:p.targets,benchmarkCode:p.benchmarkCode,calendarIssue:hash(known)!==p.calendarHash?"予測時点の営業日カレンダーから変更されています":undefined};
+    options={...options,...fixedScoutEvaluation(p,await s.store.read<Calendar>("market/calendar.json",[]))};
   }
   const selected=options.evaluationCodes?report.rows.filter(r=>options.evaluationCodes!.includes(r.code)):report.rows;
   const calendar = options.calendar??await s.store.read<Calendar>("market/calendar.json", []),
@@ -94,15 +116,16 @@ export async function evaluateScout(
     benchmark = benchmarkCode && selected.length
       ? await load(benchmarkCode).catch(() => [])
       : [],
+    calculate=options.calculateOutcome??scoutOutcome,
     rows = [];
   for (const r of selected) {
     const bars = await load(r.code).catch(() => []);
     for (const horizon of [5, 10, 20]) {
-      const raw = scoutOutcome(bars, report.asOf, horizon, calendar, now),
+      const raw = calculate(bars, report.asOf, horizon, calendar, now),
         issue=options.calendarIssue??(options.requiredTargets&&!options.requiredTargets[String(horizon)]?"予測時点の営業日期限が固定できていません":null),
-        outcome=issue?{...scoutOutcome([],report.asOf,horizon,calendar,now),status:"unavailable" as const,reason:issue}:raw,
+        outcome=issue?{...calculate([],report.asOf,horizon,calendar,now),status:"unavailable" as const,reason:issue}:raw,
         baseline = benchmarkCode && !issue
-          ? scoutOutcome(benchmark, report.asOf, horizon, calendar, now,false)
+          ? calculate(benchmark, report.asOf, horizon, calendar, now,false)
           : null;
       rows.push({
         code: r.code,
