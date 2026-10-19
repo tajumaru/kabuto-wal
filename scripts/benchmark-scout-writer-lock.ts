@@ -15,10 +15,11 @@ import { measure } from "./benchmark-scout-accuracy";
  * Source read calls exclude the competing writers' lock-owner polling, whereas
  * measure() filesystem counters include every operation inside the fixture root.
  */
-export async function benchmarkScoutWriterLock(sizes:number[],logFile?:string,baseline?:typeof scoutAccuracy,variant:"before"|"after"|"both"="after"){
+export async function benchmarkScoutWriterLock(sizes:number[],logFile?:string,baseline?:typeof scoutAccuracy,variant:"before"|"after"|"both"="after",hotRepeats=1){
+ if(!Number.isInteger(hotRepeats)||hotRepeats<1||hotRepeats>10)throw Error("invalid repetitions");
  const emit=(value:unknown)=>{const line=JSON.stringify(value)+"\n";if(logFile)appendFileSync(logFile,line);process.stdout.write(line);};
  const fetch=globalThis.fetch;globalThis.fetch=async()=>{throw Error("synthetic lock benchmark forbids network");};
- emit({environment:{node:process.version,platform:process.platform,cpu:os.cpus()[0]?.model,cpus:os.cpus().length,memory:os.totalmem(),samplesPerPhase:1,gc:!!global.gc,variant,fixture:"10 candidates;250 symbols;2 revisions/day;4 overlapping dates;temporary synthetic JSON only; app cold, OS cache not flushed; before then after on identical fixture"}});
+ emit({environment:{node:process.version,platform:process.platform,cpu:os.cpus()[0]?.model,cpus:os.cpus().length,memory:os.totalmem(),coldRepeats:1,hotRepeats,gc:!!global.gc,variant,fixture:"10 candidates;250 symbols;2 revisions/day;4 overlapping dates;temporary synthetic JSON only; app cold, OS cache not flushed; fixed evaluation cutoff"}});
  try{for(const size of sizes){
   emit({stage:"fixture",size});
   const f=await scoutScaleFixture(size,{candidates:10,symbols:250,revisions:true});
@@ -29,7 +30,9 @@ export async function benchmarkScoutWriterLock(sizes:number[],logFile?:string,ba
    if(!api)throw Error("baseline API required");
    await unlink(f.s.store.path(f.lastEvaluation));
    const s=new Service(f.root,"demo",false),other=new Service(f.root,"demo",false);
-   for(const [phase,page] of [["cold-with-one-save",1],["cache-validation-no-save",1],["page2-no-save",2]] as const){
+   const phases:Array<readonly [string,number,number]>=[["cold-with-one-save",1,0]];
+   for(let run=0;run<hotRepeats;run++)phases.push(["cache-validation-no-save",1,run],["page2-no-save",2,run]);
+   for(const [phase,page,run] of phases){
     const lock=s.store.lock.bind(s.store),write=s.store.write.bind(s.store),read=s.store.read.bind(s.store);
     let lockCount=0,holdMs=0,acquireMs=0,saveMs=0,saves=0,sourceReads=0,held=false;
     const writers:Array<Promise<{trigger:string;waitMs:number;writeMs:number;timedOut:boolean}>>=[];
@@ -58,12 +61,16 @@ export async function benchmarkScoutWriterLock(sizes:number[],logFile?:string,ba
      const at=performance.now();
      try{await write(key,value,immutable);}finally{saveMs+=performance.now()-at;saves++;}
     };
-    let metrics;
-    try{metrics=await measure(f.root,()=>api(s,{page,pageSize:1},f.now));}finally{s.store.lock=lock;s.store.write=write;s.store.read=read;}
+    let metrics,jsonParses=0,jsonParseMs=0,jsonStringifies=0,jsonStringifyMs=0;
+    const parse=JSON.parse,stringify=JSON.stringify;
+    JSON.parse=((...args:Parameters<typeof JSON.parse>)=>{const at=performance.now();jsonParses++;try{return Reflect.apply(parse,JSON,args);}finally{jsonParseMs+=performance.now()-at;}}) as typeof JSON.parse;
+    JSON.stringify=((...args:Parameters<typeof JSON.stringify>)=>{const at=performance.now();jsonStringifies++;try{return Reflect.apply(stringify,JSON,args);}finally{jsonStringifyMs+=performance.now()-at;}}) as typeof JSON.stringify;
+    try{metrics=await measure(f.root,()=>api(s,{page,pageSize:1},f.now));}finally{s.store.lock=lock;s.store.write=write;s.store.read=read;JSON.parse=parse;JSON.stringify=stringify;}
     const probes=await Promise.all(writers);
-    emit({stage:"sample",size,implementation,phase,lockCount,holdMs,acquireMs,saves,saveMs,sourceReads,writers:probes,...metrics});
-    if(implementation==="before")hashes.set(phase,metrics.responseHash);
-    else if(hashes.has(phase)&&hashes.get(phase)!==metrics.responseHash)throw Error("baseline and improved responses differ");
+    emit({stage:"sample",size,implementation,phase,run,lockCount,holdMs,acquireMs,saves,saveMs,sourceReads,jsonParses,jsonParseMs,jsonStringifies,jsonStringifyMs,writers:probes,...metrics});
+    const identity=`${phase}/${run}`;
+    if(implementation==="before")hashes.set(identity,metrics.responseHash);
+    else if(hashes.has(identity)&&hashes.get(identity)!==metrics.responseHash)throw Error("baseline and improved responses differ");
     if(saves!==(phase==="cold-with-one-save"?1:0))throw Error("unexpected evaluation save count");
     if(implementation==="after"&&(holdMs>=120_000||probes.some(w=>w.timedOut)||phase!=="cold-with-one-save"&&lockCount!==0))throw Error("writer contention target not met");
    }
@@ -71,9 +78,9 @@ export async function benchmarkScoutWriterLock(sizes:number[],logFile?:string,ba
  }}finally{globalThis.fetch=fetch;}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href){
- const sizes=(process.argv[2]??"1000,5000,10000").split(",").map(Number),baselineFile=process.argv[3],variant=process.argv[4]??"after";
- if(sizes.some(n=>![1000,5000,10000].includes(n))||!["before","after","both"].includes(variant))throw Error("invalid parameters");
+ const sizes=(process.argv[2]??"100,1000,5000,10000").split(",").map(Number),baselineFile=process.argv[3],variant=process.argv[4]??"after",hotRepeats=Number(process.argv[5]??1);
+ if(sizes.some(n=>![100,1000,5000,10000].includes(n))||!["before","after","both"].includes(variant))throw Error("invalid parameters");
  const baseline=baselineFile&&baselineFile!=="-"?await import(pathToFileURL(path.resolve(baselineFile)).href):undefined;
  const dir=path.resolve("node_modules/.cache");mkdirSync(dir,{recursive:true});
- await benchmarkScoutWriterLock(sizes,path.join(dir,`scout-writer-lock-two-phase-${Date.now()}.jsonl`),baseline?.scoutAccuracy,variant as "before"|"after"|"both");
+ await benchmarkScoutWriterLock(sizes,path.join(dir,`scout-writer-lock-two-phase-${Date.now()}.jsonl`),baseline?.scoutAccuracy,variant as "before"|"after"|"both",hotRepeats);
 }
