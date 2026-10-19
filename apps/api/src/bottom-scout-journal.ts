@@ -75,25 +75,27 @@ export async function evaluateScout(
   s: Service,
   report: ScoutReport,
   now = new Date(),
-  options: {calendar?:Calendar;calendarIssue?:string;requiredTargets?:Record<string,string|null>;benchmarkCode?:string|null;forecastId?:string;loadSeries?:(code:string)=>Promise<Bar[]>} = {},
+  options: {calendar?:Calendar;calendarIssue?:string;requiredTargets?:Record<string,string|null>;benchmarkCode?:string|null;forecastId?:string;evaluationCodes?:string[];loadSeries?:(code:string)=>Promise<Bar[]>} = {},
 ) {
   if(!options.forecastId&&await s.store.read(forecastKey(report),null)){
     const {forecast:p,report:original}=await readScoutForecast(s,forecastKey(report));
     if(hash(original)!==hash(report))throw Error("評価対象が予測原本と一致しません");
+    if(options.evaluationCodes&&hash([...options.evaluationCodes].sort())!==hash(p.rows.map(r=>r.code).sort()))throw Error("評価対象が固定上位候補と一致しません");
     const current=await s.store.read<Calendar>("market/calendar.json",[]),end=p.calendar.at(-1)?.date??p.asOf;
     const known=current.filter(d=>d.date>=p.asOf&&d.date<=end).sort((a,b)=>a.date.localeCompare(b.date));
     options={...options,forecastId:p.forecastId,calendar:p.calendar,requiredTargets:p.targets,benchmarkCode:p.benchmarkCode,calendarIssue:hash(known)!==p.calendarHash?"予測時点の営業日カレンダーから変更されています":undefined};
   }
+  const selected=options.evaluationCodes?report.rows.filter(r=>options.evaluationCodes!.includes(r.code)):report.rows;
   const calendar = options.calendar??await s.store.read<Calendar>("market/calendar.json", []),
     configured = process.env.SCOUT_BENCHMARK_CODE,
     benchmarkCode =
       options.benchmarkCode!==undefined?options.benchmarkCode:configured && /^[0-9A-Z]{5}$/.test(configured) ? configured : null,
     load=options.loadSeries??((code:string)=>currentScoutSeries(s,code,now)),
-    benchmark = benchmarkCode
+    benchmark = benchmarkCode && selected.length
       ? await load(benchmarkCode).catch(() => [])
       : [],
     rows = [];
-  for (const r of report.rows) {
+  for (const r of selected) {
     const bars = await load(r.code).catch(() => []);
     for (const horizon of [5, 10, 20]) {
       const raw = scoutOutcome(bars, report.asOf, horizon, calendar, now),
@@ -162,6 +164,7 @@ export async function evaluateScout(
       }
   const review = scoutReviewSchema.parse({
     methodVersion:"scout-outcome-v2",
+    evaluationScope:options.evaluationCodes?"forecast-top10":"all-analyzed",
     ...(options.forecastId?{forecastId:options.forecastId}:{}),
     reportId: report.reportId,
     asOf: report.asOf,
@@ -171,7 +174,7 @@ export async function evaluateScout(
     rows,
     notes: [
       `記録区分：${report.recordingMode}。過去研究と実運用予測は混ぜません。`,
-      "期限未確定の結果は成績から除外。候補以外も同じ取得範囲で集計します。",
+      options.evaluationCodes?"期限未確定の結果は成績から除外。固定した上位10候補だけを評価し、非候補はこの集計に含めません。":"期限未確定の結果は成績から除外。候補以外も同じ取得範囲で集計します。",
       "上昇した割合は将来の成功確率ではありません。銘柄間の相関と選択バイアスは残ります。",
       "取引コスト・売買成立・配当を含まない調整価格の比較です。閾値や重みの自動変更はしません。",
       ...(benchmarkCode

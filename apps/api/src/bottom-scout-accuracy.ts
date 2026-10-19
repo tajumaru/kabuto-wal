@@ -14,7 +14,7 @@ export async function scoutAccuracy(s:Service,raw:unknown={},now=new Date()){
   for(const file of files.slice((q.page-1)*q.pageSize,q.page*q.pageSize)){
     const {forecast:p,report}=await readScoutForecast(s,file);
     if(p.createdAt>now.toISOString()){excludedReports++;continue;}selectedReports++;
-    const review=await evaluateScout(s,report,now,{loadSeries:load});
+    const review=await evaluateScout(s,report,now,{loadSeries:load,evaluationCodes:p.rows.map(r=>r.code)});
     if(!review.evaluationId||review.forecastId!==p.forecastId)throw Error("評価原本と予測IDが一致しません");
     for(const row of p.rows){
       const e=report.rows.find(r=>r.code===row.code)!;

@@ -202,7 +202,7 @@ export async function scoutResearch(
             ),
         bars = job
           ? (await readHunterSeries(s, job.id, m.providerCode)).bars
-          : (derived?.bars ?? (await snapshot(s, m.providerCode, cutoff)));
+          : (derived?.bars ?? (await snapshot(s, m.providerCode, cutoff,true)));
       loaded.push({
         code: m.providerCode,
         name: m.name,

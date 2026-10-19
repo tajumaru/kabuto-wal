@@ -79,6 +79,7 @@ export const scoutReviewSchema = z.object({
   methodVersion: z.literal("scout-outcome-v2").optional(),
   forecastId: scoutId.optional(),
   evaluationId: scoutId.optional(),
+  evaluationScope: z.enum(["all-analyzed","forecast-top10"]).optional(),
   reportId: scoutId,
   asOf: z.string().date(),
   evaluatedAt: z.string().datetime(),

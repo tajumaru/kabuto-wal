@@ -19,9 +19,9 @@ function PredictionCard({p,horizon}:{p:AccuracyPrediction;horizon:number}){
     <details onToggle={event=>setOpen(event.currentTarget.open)}><summary>予測の根拠・結果・かぶまるの振り返り</summary>{open&&<>
       <p>{p.reflection?.selection}</p><p>{reflection?.text}</p>
       <dl className="accuracy-facts"><dt>当初の基準日調整終値</dt><dd>{p.referencePrice?.toLocaleString("ja-JP")??"確認不能"}円</dd><dt>最大上昇（終値）</dt><dd>{pct(r?.maxRise)}</dd><dt>最大ドローダウン（終値）</dt><dd>{pct(r?.maxDrawdown)}</dd><dt>再下落</dt><dd>{r?.relapse==null?"未評価":r.relapse?"あり":"なし"}</dd><dt>評価系列の基準終値</dt><dd>{r?.basePrice?.toLocaleString("ja-JP")??"未評価"}</dd></dl>
-      <p>分割等の調整で当初の価格と評価系列の価格が異なる場合があります。予測原本は変更しません。</p>
+      <p>分割等の調整・後日改訂で当初の価格と評価系列の価格が異なる場合があります。予測原本は変更しません。</p>
       <p>期限後の調整終値：{r?.targetPrice?.toLocaleString("ja-JP")??"未評価"}。比較対象の騰落率：{r?.status==="evaluated"&&r.benchmarkReturn!==null?pct(r.benchmarkReturn):"比較不能"}。</p>
-      <h4>保存した指標と注意点</h4><dl className="accuracy-facts">{Object.entries(e.indicators).map(([key,value])=><div key={key}><dt>{indicatorNames[key]??key}</dt><dd>{value===null?"欠損":value.toFixed(3)}</dd></div>)}</dl>
+      <h4>保存した指標と注意点</h4><dl className="accuracy-facts">{Object.entries(e.indicators).map(([key,value])=><div key={key}><dt>{indicatorNames[key]??key}</dt><dd>{value===null?"欠損":key==="drawdown75"?pct(value):value.toFixed(3)}</dd></div>)}</dl>
       {e.contributions.map(c=><p key={c.code}>{c.label}：{c.met?"成立":"未成立"}（{c.earnedPoints}/{c.maxPoints}点）</p>)}
       {e.similar?<p>デジャヴ類似度 {e.similar.bestSimilarity?.toFixed(1)??"未確認"} ／ 過去事例 {e.similar.sampleCount}件。{e.similar.lowSample&&"少数事例のため信頼性は低いです。"}</p>:<p>デジャヴの根拠は未保存です。</p>}
       <h4>似た条件で成功した保存済み予測</h4>{reflection?.similarSuccesses.length?reflection.similarSuccesses.map(s=><p key={`${s.forecastId}/${s.code}`}>{s.code}：{s.matchedConditions.join("、")} ／ 予測ID {s.forecastId}</p>):<p>このページでは、比較できる確定成功例がまだありません。</p>}

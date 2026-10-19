@@ -15,7 +15,20 @@ const service = new Service(dir, "demo", false);
 const app = await createApp(service);
 let scoutBackup:{master:unknown;calendar:unknown}|null=null;
 // Fixture-server-only setup; never registered by the production application.
-app.post("/__test__/scout",async req=>{if((req.body as {reset?:boolean})?.reset){if(scoutBackup){await service.store.write("market/master.json",scoutBackup.master);await service.store.write("market/calendar.json",scoutBackup.calendar);scoutBackup=null;}return {ok:true};}scoutBackup={master:await service.store.read("market/master.json"),calendar:await service.store.read("market/calendar.json")};const f=await scoutFixture(service);for(const m of f.master){const bars=await service.history(m.providerCode);await service.store.write(`prices/${m.providerCode}/fixture.json`,bars.slice(0,320));}return {asOf:f.asOf};});
+app.post("/__test__/scout",async req=>{
+ const body=req.body as {reset?:boolean;outcomes?:string};
+ if(body?.reset){if(scoutBackup){await service.store.write("market/master.json",scoutBackup.master);await service.store.write("market/calendar.json",scoutBackup.calendar);scoutBackup=null;}return {ok:true};}
+ scoutBackup={master:await service.store.read("market/master.json"),calendar:await service.store.read("market/calendar.json")};
+ const f=await scoutFixture(service);
+ for(const [i,m] of f.master.entries()){
+   let bars=await service.history(m.providerCode);
+   if(body?.outcomes!=="mixed")bars=bars.slice(0,320);
+   else if(i===1)bars=bars.map(b=>b.sessionDate>f.asOf?{...b,adjClose:80,adjLow:79,revisionId:`fall-${b.sessionDate}`}:b);
+   else if(i===2)bars=bars.filter(b=>b.sessionDate!==f.dates[324]);
+   await service.store.write(`prices/${m.providerCode}/fixture.json`,bars);
+ }
+ return {asOf:f.asOf};
+});
 const existingCalendar=await service.store.read<{date:string;open:boolean}[]>("market/calendar.json");
 await labFixture(service);
 const labCalendar=await service.store.read<{date:string;open:boolean}[]>("market/calendar.json");
