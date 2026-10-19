@@ -1,3 +1,4 @@
+import { registerEarnings } from "./earnings";
 import { registerKabumaruResearch } from "./kabumaru-research";
 import { registerHunterCohorts } from "./hunter-cohort";
 import { registerKabumaruNotebook } from "./kabumaru-notebook";
@@ -111,6 +112,7 @@ export async function createApp(
   registerKabumaruAgent(app, service, allowedOrigins);
   registerScoutMemory(app,service,allowedOrigins);
   registerScoutAccuracy(app,service);
+  registerEarnings(app,service);
   app.get("/api/auth/challenge", async () =>
     service.store.lock(async () => {
       const nonce = randomBytes(32).toString("hex"),
