@@ -7,6 +7,8 @@ import {
   labFeatures,
   labMethodSchema,
   labRunSchema,
+  isLegacyLabPlan,
+  LEGACY_LAB_PLAN_MESSAGE,
 } from "../../../packages/core/hunter-experiment-schema";
 import {
   labBase,
@@ -25,7 +27,7 @@ import {
   readLabRun,
   labRunKey,
 } from "./hunter-experiment-runner";
-import { readLabReport } from "./hunter-experiment-report";
+import { readLabReport, readLegacyLabReportHistory } from "./hunter-experiment-report";
 import {
   saveLabMemory,
   syncLabMemory,
@@ -125,6 +127,8 @@ export function registerHunterLab(app: FastifyInstance, s: Service) {
       const p = await readLabPlan(s, f.split("/").at(-2)!);
       records.push({
         planId: p.planId,
+        legacy: isLegacyLabPlan(p),
+        executable: !isLegacyLabPlan(p),
         createdAt: p.createdAt,
         training: p.training,
         validation: p.validation,
@@ -162,14 +166,18 @@ export function registerHunterLab(app: FastifyInstance, s: Service) {
     const records = await Promise.all(
       files
         .slice((q.page - 1) * q.pageSize, q.page * q.pageSize)
-        .map((f) => s.store.read(f).then((r) => labRunSchema.parse(r))),
+        .map(async f => {
+          const j=labRunSchema.parse(await s.store.read(f)),legacy=isLegacyLabPlan(await readLabPlan(s,j.planId));
+          return {...j,legacy,executable:!legacy};
+        }),
     );
     return { records, total: files.length, ...q };
   });
   app.get("/api/research/lab/runs/:id", async (req) => {
     const { id } = paramsSchema.parse(req.params);
-    await recoverResearchJob(s, labRunKey(id));
-    return readLabRun(s, id);
+    const j=await readLabRun(s,id),legacy=isLegacyLabPlan(await readLabPlan(s,j.planId));
+    if(!legacy)await recoverResearchJob(s, labRunKey(id));
+    return {...await readLabRun(s,id),legacy,executable:!legacy};
   });
   app.post("/api/research/lab/runs/:id/control", async (req) => {
     const { id } = paramsSchema.parse(req.params),
@@ -185,7 +193,10 @@ export function registerHunterLab(app: FastifyInstance, s: Service) {
     const q = z
         .object({ view: z.literal("compact").optional() })
         .parse(req.query),
-      r = await readLabReport(s, paramsSchema.parse(req.params).id);
+      id = paramsSchema.parse(req.params).id,
+      j = await readLabRun(s,id),
+      legacy = isLegacyLabPlan(await readLabPlan(s,j.planId)),
+      r = legacy ? {...await readLegacyLabReportHistory(s,id),historyOnly:true,historyWarning:LEGACY_LAB_PLAN_MESSAGE+"保存済み履歴です。作成当時の評価hashは再検証できません。"} : await readLabReport(s,id);
     return q.view === "compact"
       ? {
           ...r,

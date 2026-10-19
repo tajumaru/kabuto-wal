@@ -22,12 +22,15 @@ const list = <T extends z.ZodType>(schema: T) =>
   z.object({ records: z.array(schema), total: z.number() });
 const planView = z.object({
   planId: z.string(),
+  legacy: z.boolean(),
+  executable: z.boolean(),
   training: labPeriodSchema,
   validation: labPeriodSchema,
   test: labPeriodSchema,
   partitions: z.record(z.string(), z.string()),
   purgeReasons: z.record(z.string(), z.string()),
 });
+const runView=labRunSchema.extend({legacy:z.boolean(),executable:z.boolean()});
 export function KabumaruLab({ request }: { request: Request }) {
   const [params, setParams] = useSearchParams(),
     client = useQueryClient(),
@@ -75,7 +78,7 @@ export function KabumaruLab({ request }: { request: Request }) {
   const runs = useQuery({
     queryKey: ["lab-runs", page],
     queryFn: async () =>
-      list(labRunSchema).parse(
+      list(runView).parse(
         await request(`/research/lab/runs?page=${page}`),
       ),
   });
@@ -83,9 +86,9 @@ export function KabumaruLab({ request }: { request: Request }) {
     queryKey: ["lab-run", runId],
     enabled: /^[a-f0-9]{64}$/.test(runId),
     queryFn: async () =>
-      labRunSchema.parse(await request(`/research/lab/runs/${runId}`)),
+      runView.parse(await request(`/research/lab/runs/${runId}`)),
     refetchInterval: (q) =>
-      ["queued", "running"].includes(q.state.data?.status ?? "") ? 1000 : false,
+      q.state.data?.executable && ["queued", "running"].includes(q.state.data.status) ? 1000 : false,
   });
   const report = useQuery({
     queryKey: ["lab-report-view", runId],
@@ -260,11 +263,12 @@ export function KabumaruLab({ request }: { request: Request }) {
             <option value="">選択してください</option>
             {plans.data?.records.map((p) => (
               <option key={p.planId} value={p.planId}>
-                {p.training.from}〜{p.test.to} · {p.planId.slice(0, 8)}
+                {p.legacy ? "旧形式・再実行不可 · " : ""}{p.training.from}〜{p.test.to} · {p.planId.slice(0, 8)}
               </option>
             ))}
           </select>
         </label>
+        {plan?.legacy && <p role="note">旧形式・再実行不可。原本と履歴は保存されています。現在の評価hashは後付けしません。対象コホートと期間を確認し、上の「検証計画を固定する」から新形式の計画を作り直してください。過去に参照済みのTest期間は再利用できません。</p>}
         {plan && (
           <p>
             割当
@@ -290,7 +294,7 @@ export function KabumaruLab({ request }: { request: Request }) {
           />
         </label>
         <button
-          disabled={busy || !planId}
+          disabled={busy || !plan?.executable}
           onClick={() =>
             void act(async () => {
               const p = z
@@ -422,7 +426,7 @@ export function KabumaruLab({ request }: { request: Request }) {
           設定・分割・過学習の注意を確認し、実験を開始します
         </label>
         <button
-          disabled={busy || !confirm || !methodId || !planId}
+          disabled={busy || !confirm || !methodId || !plan?.executable}
           onClick={() =>
             void act(async () => {
               if (method?.status === "draft")
@@ -446,7 +450,7 @@ export function KabumaruLab({ request }: { request: Request }) {
           確認した設定で実験開始
         </button>
         <button
-          disabled={busy || !methodId || !planId || !confirm}
+          disabled={busy || !methodId || !plan?.executable || !confirm}
           onClick={() =>
             void act(async () => {
               await request(`/research/lab/plans/${planId}/select`, {
@@ -464,6 +468,7 @@ export function KabumaruLab({ request }: { request: Request }) {
         {run.data && (
           <div aria-live="polite">
             <p>
+              {run.data.legacy && "旧形式・再実行不可（保存済みの状態） ／ "}
               状態：{run.data.status} ／ 完了{run.data.processed}/
               {run.data.total}コホート ／ 計算失敗{run.data.failed}
             </p>
@@ -475,7 +480,7 @@ export function KabumaruLab({ request }: { request: Request }) {
             {(["pause", "cancel", "resume"] as const).map((action) => (
               <button
                 key={action}
-                disabled={busy || run.data.status === "completed"}
+                disabled={busy || !run.data.executable || run.data.status === "completed"}
                 onClick={() =>
                   void act(async () => {
                     await request(`/research/lab/runs/${runId}/control`, {
@@ -517,8 +522,9 @@ export function KabumaruLab({ request }: { request: Request }) {
       {report.isFetching && <p role="status">比較レポートを照合中…</p>}
       {report.data && report.data.runId === runId && (
         <>
+          {report.data.historyOnly && <p role="note">{report.data.historyWarning}</p>}
           <LabResearchReport report={report.data} />
-          <LabMemory key={runId} id={runId} request={request} />
+          {!report.data.historyOnly && <LabMemory key={runId} id={runId} request={request} />}
         </>
       )}
       <section className="card">
@@ -554,7 +560,7 @@ export function KabumaruLab({ request }: { request: Request }) {
         {runs.data?.records.map((j) => (
           <p key={j.runId}>
             <Link to={`?run=${j.runId}&page=${page}`}>
-              {j.stage} · {j.status} · {j.runId.slice(0, 12)}
+              {j.legacy ? "旧形式・再実行不可 · " : ""}{j.stage} · {j.status} · {j.runId.slice(0, 12)}
             </Link>
           </p>
         ))}

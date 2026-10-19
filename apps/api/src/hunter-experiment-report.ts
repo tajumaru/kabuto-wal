@@ -1,6 +1,6 @@
 import type { Service } from "./service";
 import { completedLabParts, readLabRun } from "./hunter-experiment-runner";
-import { labBase, readLabMethod } from "./hunter-experiment";
+import { labBase, readLabMethod, readLabPlan, labMethodIdentity } from "./hunter-experiment";
 import { readCohort } from "./hunter-cohort";
 import {
   comparativeCohortReport,
@@ -289,4 +289,16 @@ export async function buildLabReport(
 export async function readLabReport(s: Service, id: string) {
   await readLabRun(s, cohortIdSchema.parse(id));
   return buildLabReport(s, id);
+}
+// Explicit history endpoint only. Never used for selection, scoring, memory,
+// attestation, or regenerated evidence. No writes and no current hashes attached.
+export async function readLegacyLabReportHistory(s: Service, id: string) {
+  const j=await readLabRun(s,cohortIdSchema.parse(id)),p=await readLabPlan(s,j.planId);
+  if(p.evaluationHashes!==undefined)throw Error("新形式は通常の根拠検証を使用してください");
+  const raw=await s.store.read(`${labBase}/runs/${id}/report/original.json`,null);
+  if(!raw)throw Error("旧形式・再実行不可。保存済み完成レポートがありません。新形式で研究計画を作り直してください。");
+  const r=labReportSchema.parse(raw),{reportId,...body}=r;
+  if(j.status!=="completed"||j.processed!==j.total||hash(body)!==reportId||r.runId!==id||r.planId!==p.planId||r.experimentId!==j.experimentId||r.stage!==j.stage||r.inputHash!==j.inputHash||labMethodIdentity(r.method)!==j.experimentId||hash([p,r.method,p.evaluationIds])!==j.inputHash)
+    throw Error("保存済み履歴のhash・参照が一致しません");
+  return r;
 }

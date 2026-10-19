@@ -44,6 +44,8 @@ export const labReportSchema = z
 export type LabReport = z.infer<typeof labReportSchema>;
 export const labReportViewSchema = labReportSchema
   .extend({
+    historyOnly: z.boolean().optional(),
+    historyWarning: z.string().optional(),
     referenceCounts: z.object({
       baseline: z.number().int(),
       experiment: z.number().int(),
