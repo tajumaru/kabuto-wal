@@ -12,7 +12,7 @@ export const financialFields = [
   "NxFDiv1Q", "NxFDiv2Q", "NxFDiv3Q", "NxFDivFY", "NxFDivAnn", "NxFDivUnit", "NxFPayoutRatioAnn",
   "FSales2Q", "FOP2Q", "FOdP2Q", "FNP2Q", "FEPS2Q", "NxFSales2Q", "NxFOP2Q", "NxFOdP2Q", "NxFNp2Q", "NxFEPS2Q",
   "FSales", "FOP", "FOdP", "FNP", "FEPS", "NxFSales", "NxFOP", "NxFOdP", "NxFNp", "NxFEPS",
-  "ShOutFY", "TrShFY", "AvgSh", "NCSales", "NCOP", "NCOdP", "NCNP", "NCEPS", "NCTA", "NCEq", "NCEqAR", "NCBPS",
+  "ShEq", "NCShEq", "ROE", "NCROE", "ShOutFY", "TrShFY", "AvgSh", "NCSales", "NCOP", "NCOdP", "NCNP", "NCEPS", "NCTA", "NCEq", "NCEqAR", "NCBPS",
   "FNCSales2Q", "FNCOP2Q", "FNCOdP2Q", "FNCNP2Q", "FNCEPS2Q", "NxFNCSales2Q", "NxFNCOP2Q", "NxFNCOdP2Q", "NxFNCNP2Q", "NxFNCEPS2Q",
   "FNCSales", "FNCOP", "FNCOdP", "FNCNP", "FNCEPS", "NxFNCSales", "NxFNCOP", "NxFNCOdP", "NxFNCNP", "NxFNCEPS",
 ] as const;
@@ -34,6 +34,7 @@ export const materialCheckSchema = z.object({
   status: z.enum(["checked", "no-data", "not-fetched", "failed"]),
   reason: z.string(), checkedAt: z.string().datetime().nullable(),
   source: z.literal("jquants-v2"), revisions: z.array(z.string()),
+  evidence: z.array(z.object({revision:z.string(),rawHash:z.string(),fetchedAt:z.string().datetime()})).optional(),
 });
 export const companyMaterialsSchema = z.object({
   cutoff: z.string().datetime(), earnings: materialCheckSchema, schedule: materialCheckSchema,
