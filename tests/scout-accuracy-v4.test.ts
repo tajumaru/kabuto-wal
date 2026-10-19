@@ -9,6 +9,8 @@ import { promisify } from "node:util";
 import path from "node:path";
 import { createScoutOutcomeCache,scoutOutcome } from "../apps/api/src/bottom-scout-journal";
 import { scoutAccuracyBatch } from "../apps/api/src/scout-accuracy-io";
+import { scoutReviewSchema } from "../packages/core/bottom-scout-schema";
+import { hash } from "../packages/integrations/adjusted-series";
 
 it("検証済みの入力を再確認するときJSONを再解析せず、内容の全読込は続ける",async()=>{
  const f=await scoutScaleFixture(2);let calls=0;
@@ -86,6 +88,21 @@ it("欠損したindexや自己hash風の値を持つ壊れたindexを原本の�
   await f.json(key,{...body,inputHash:"0".repeat(64)});
   await expect(scoutAccuracy(new Service(f.root,"demo",false),{},f.now,{persist:false})).rejects.toThrow();
  }finally{await f.cleanup();}
+});
+
+it("予測追加・評価revision追加を検出し、未来の別評価を現在の成績へ混ぜない",async()=>{
+ const f=await scoutScaleFixture(2),history=vi.spyOn(f.s,"history");
+ try{
+  const call=()=>scoutAccuracy(f.s,{},f.now,{persist:false}),before=await call();
+  history.mockClear();await call();expect(history).not.toHaveBeenCalled();
+  const extra=scoutReviewSchema.parse({...await f.s.store.read(f.lastEvaluation),notes:["future fixture evaluation"],evaluatedAt:new Date(f.now.getTime()+3600_000).toISOString()});
+  const {evaluationId,evaluatedAt,...identity}=extra;void evaluationId;void evaluatedAt;
+  extra.evaluationId=hash(identity);
+  await f.json(`research/scout/evaluations/${extra.reportId}/${extra.evaluationId}/original.json`,extra);
+  expect(await call()).toEqual(before);expect(history).toHaveBeenCalled();
+  history.mockClear();await f.append(2);
+  expect((await call()).totalReports).toBe(before.totalReports+1);expect(history).toHaveBeenCalled();
+ }finally{history.mockRestore();await f.cleanup();}
 });
 
 it.each(["price","calendar","evaluation","delete"] as const)("別Serviceによる%sの変更をキャッシュに残さない",async kind=>{
