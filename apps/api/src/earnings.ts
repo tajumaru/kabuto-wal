@@ -7,7 +7,11 @@ import { preserveEarnings, recordEarningsAttempt, readEarningsAt, type EarningsE
 import { analyzeEarnings } from "../../../packages/core/earnings-analysis";
 import { earningsCode, type CompanyMaterials } from "../../../packages/core/earnings-schema";
 export async function companyMaterials(s: Service, code: string, cutoff: string): Promise<CompanyMaterials> {
-  const [summary, schedule] = await Promise.all([readEarningsAt(s.store,code,"summary",cutoff),readEarningsAt(s.store,code,"earnings-date",cutoff)]);
+  const safeRead = async (endpoint: EarningsEndpoint) => {
+    try { return await readEarningsAt(s.store,code,endpoint,cutoff); }
+    catch { return {evidence:[],attempt:{endpoint,code,fetchedAt:cutoff,status:"failed" as const,reason:"保存原本の整合性を確認できません",revision:null}}; }
+  };
+  const [summary, schedule] = await Promise.all([safeRead("summary"),safeRead("earnings-date")]);
   return analyzeEarnings(summary,schedule,cutoff);
 }
 function failureReason(error: unknown) {
@@ -28,7 +32,8 @@ export async function acquireEarnings(s: Service, code: string, provider?: JQuan
   const master = await s.store.read<{providerCode:string}[]>("market/master.json",[]);
   if (!master.some(m => m.providerCode === code)) throw Error("取得済み銘柄一覧にないコードです");
   const started = Date.now(); let attempts = 0;
-  const base = provider ? null : new JQuantsLimiter(key!,s.store.root,"Light");
+  const configuredRpm = process.env.JQUANTS_REQUESTS_PER_MINUTE;
+  const base = provider ? null : new JQuantsLimiter(key!,s.store.root,"Light",configuredRpm ? Number(configuredRpm) : undefined);
   const client = provider ?? new JQuants(key!,fetch,{plan:"Light",gate:{
     wait:async()=>{if(attempts >= 20 || Date.now()-started > 60000) throw new RequestDeferred(new Date(Date.now()+60000).toISOString()); await base!.wait(); attempts++;},
     deferUntil:async time=>{await base!.deferUntil(time);throw new RequestDeferred(new Date(time).toISOString());},

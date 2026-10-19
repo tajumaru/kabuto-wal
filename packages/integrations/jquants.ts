@@ -71,6 +71,7 @@ export class JQuants {
       const schema = endpoint === "fins/summary" ? earningsSummarySchema : earningsDateSchema;
       parsed.data = parsed.data.map(r => schema.parse(r));
       if (params.code && parsed.data.some(r => r.Code !== (params.code.length === 4 ? `${params.code}0` : params.code))) throw Error("対象外の銘柄が含まれています");
+      if (params.scheduled_date && parsed.data.some(r => r.SchDate !== params.scheduled_date.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3"))) throw Error("対象外の予定日が含まれています");
       if (params.date && parsed.data.some(r => (endpoint === "fins/summary" ? r.DiscDate : r.PubDate) !== params.date.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3"))) throw Error("対象外の日付が含まれています");
     }
     return { data: parsed.data, next: parsed.pagination_key ?? undefined };
