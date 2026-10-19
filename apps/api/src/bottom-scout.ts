@@ -31,6 +31,7 @@ import {
 } from "../../../packages/core/hunter-schema";
 import { readHunterDetail } from "./hunter-consistency";
 import { readHunterSeries } from "./hunter-research";
+import { saveScoutForecast } from "./bottom-scout-forecast";
 export const SCOUT_BASE = "research/scout";
 export const scoutReportKey = (id: string) =>
   `${SCOUT_BASE}/reports/${id}/original.json`;
@@ -392,6 +393,7 @@ export async function scoutResearch(
     void unused;
     report = scoutReportSchema.parse({ ...body, reportId: hash(identity) });
     await s.store.write(scoutReportKey(report.reportId), report, true);
+    await saveScoutForecast(s,report,calendar);
     await s.store.write(cacheKey, { reportId: report.reportId });
   }
   const rows =
