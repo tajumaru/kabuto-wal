@@ -10,32 +10,41 @@ import { evaluateScout } from "../apps/api/src/bottom-scout-journal";
 import { hash } from "../packages/integrations/adjusted-series";
 import type { ScoutReport } from "../packages/core/bottom-scout-schema";
 
-/** Storage workload, not an accuracy/backtest fixture. 1 candidate/report,
- * 25 synthetic symbols, 4 overlapping as-of dates; intentional repeated forecasts. */
-export async function scoutScaleFixture(count:number){
+/** Storage workload, not an accuracy/backtest fixture. Defaults to 1 candidate,
+ * 25 symbols; optionally 10 candidates, up to 1000 symbols and 2 revisions/day.
+ * Four overlapping as-of dates intentionally include repeated forecasts. */
+export async function scoutScaleFixture(count:number,options:{candidates?:1|10;symbols?:number;revisions?:boolean}={}){
  if(!Number.isInteger(count)||count<2||count>10_001)throw Error("fixture size out of range");
  const root=await mkdtemp(path.join(os.tmpdir(),"scout-bench-")),s=new Service(root,"demo",false);
  const json=async(key:string,value:unknown)=>{const dest=s.store.path(key);await mkdir(path.dirname(dest),{recursive:true});await writeFile(dest,JSON.stringify(value));};
- const seed=await scoutFixture(s,1),reply=await scoutChat(s,"底打ち候補を探して",undefined,seed.now),template=await readScoutReport(s,reply.scout.reportId!);
+ const candidates=options.candidates??1,symbols=options.symbols??25;
+ if(!Number.isInteger(symbols)||symbols<candidates||symbols>1000)throw Error("fixture symbols out of range");
+ const seed=await scoutFixture(s,candidates),reply=await scoutChat(s,"底打ち候補を探して",undefined,seed.now),template=await readScoutReport(s,reply.scout.reportId!);
  const calendar=seed.dates.map(date=>({date,open:true})),now=new Date(`${seed.dates[345]}T12:00:00Z`),baseBars=await s.history("10000");
  await evaluateScout(s,template,now,{evaluationCodes:template.rows.map(r=>r.code)});
- const series=new Map(Array.from({length:25},(_,i)=>{const code=`${1000+i}0`;return [code,baseBars.map((b,j)=>({...b,providerCode:code,seriesId:`fixture-${code}`,revisionId:`fixture-${code}-${j}`}))] as const;}));
+ const series=new Map(Array.from({length:symbols},(_,i)=>{const code=`${1000+i}0`;return [code,baseBars.flatMap((b,j)=>{
+  const latest={...b,providerCode:code,seriesId:`fixture-${code}`,revisionId:`fixture-${code}-${j}`};
+  return options.revisions?[{...latest,availableAt:`${b.sessionDate}T08:00:00.000Z`,revisionId:`older-${code}-${j}`,adjClose:latest.adjClose!*.99},latest]:[latest];
+ })] as const;}));
  for(const [code,bars] of series)await json(`prices/${code}/fixture.json`,bars);
  // Fast fixture-only writer; production Store/immutability behavior is untouched.
  const writer=new Service(root,"demo",false);writer.store.write=async(key,value)=>json(key,value);
  const reviews=new Map<string,Awaited<ReturnType<typeof evaluateScout>>>();
  let lastReport=template,lastForecast=forecastKey(template),lastEvaluation="";
  const append=async(i:number)=>{
-  const code=`${1000+Math.floor(i/4)%25}0`,asOf=seed.dates[316+i%4],bars=series.get(code)!,timestamp=new Date(`${asOf}T14:00:00.000Z`);
-  timestamp.setTime(timestamp.getTime()+(1+Math.floor(i/100))*1000);
-  const row={...template.rows[0],code,name:`人工負荷試験${code}`,asOf,observedAt:`${asOf}T09:00:00.000Z`,inputRevisionIds:bars.filter(b=>b.sessionDate<=asOf).slice(-80).map(b=>b.revisionId),seriesId:`fixture-${code}`,similar:null,chart:bars.filter(b=>b.sessionDate<=asOf).slice(-20).map(b=>({date:b.sessionDate,close:b.adjClose!}))};
+  const code=`${1000+(Math.floor(i/4)*candidates)%symbols}0`,asOf=seed.dates[316+i%4],timestamp=new Date(`${asOf}T14:00:00.000Z`);
+  timestamp.setTime(timestamp.getTime()+(1+Math.floor(i/(4*symbols)))*1000);
+  const rows=Array.from({length:candidates},(_,rank)=>{
+   const code=`${1000+(Math.floor(i/4)*candidates+rank)%symbols}0`,bars=series.get(code)!.filter(b=>b.sessionDate<=asOf&&b.availableAt.endsWith("T09:00:00.000Z"));
+   return {...template.rows[rank],code,name:`人工負荷試験${code}`,asOf,observedAt:`${asOf}T09:00:00.000Z`,inputRevisionIds:bars.slice(-80).map(b=>b.revisionId),seriesId:`fixture-${code}`,similar:null,chart:bars.slice(-20).map(b=>({date:b.sessionDate,close:b.adjClose!}))};
+  });
   const {reportId:unused,...base}=template;void unused;
-  const body={...base,asOf,createdAt:timestamp.toISOString(),cutoff:`${asOf}T14:00:00.000Z`,inputHash:hash(["synthetic-scale-v1",i]),rows:[row]};
+  const body={...base,asOf,createdAt:timestamp.toISOString(),cutoff:`${asOf}T14:00:00.000Z`,inputHash:hash(["synthetic-scale-v1",i]),rows};
   const report:ScoutReport={...body,reportId:hash(body)};
   await json(scoutReportKey(report.reportId),report);
   const forecast=await saveScoutForecast(writer,report,calendar),key=`${code}/${asOf}`;
   let review=reviews.get(key);
-  if(!review){review=await evaluateScout(writer,report,now,{persist:false,forecastId:forecast.forecastId,calendar,benchmarkCode:null,evaluationCodes:[code],loadSeries:async()=>bars});reviews.set(key,review);}
+  if(!review){review=await evaluateScout(writer,report,now,{persist:false,forecastId:forecast.forecastId,calendar,benchmarkCode:null,evaluationCodes:rows.map(r=>r.code),loadSeries:async code=>series.get(code)!});reviews.set(key,review);}
   const {evaluationId:ignored,...raw}=review;void ignored;
   const evaluation={...raw,reportId:report.reportId,forecastId:forecast.forecastId}, {evaluatedAt,...identity}=evaluation;void evaluatedAt;
   const evaluationId=hash(identity),evaluationKey=`research/scout/evaluations/${report.reportId}/${evaluationId}/original.json`;

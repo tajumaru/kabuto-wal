@@ -3,20 +3,21 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { performance } from "node:perf_hooks";
+import { createHash } from "node:crypto";
 import { scoutScaleFixture } from "../fixtures/scout-accuracy-scale";
 import { Service } from "../apps/api/src/service";
 import { scoutAccuracy } from "../apps/api/src/bottom-scout-accuracy";
 
-type Measurement={ms:number;readAttempts:number;readFiles:number;readBytes:number;directoryReads:number;rssDelta:number;heapDelta:number;peakRssDelta:number;responseBytes:number};
+export type Measurement={ms:number;readAttempts:number;readFiles:number;readBytes:number;directoryReads:number;rssDelta:number;heapDelta:number;peakRssDelta:number;responseBytes:number;responseHash:string};
 export function percentiles(values:number[]){const xs=[...values].sort((a,b)=>a-b);return {p50:xs[Math.ceil(xs.length*.5)-1],p95:xs[Math.ceil(xs.length*.95)-1]};}
-async function measure(root:string,fn:()=>Promise<unknown>):Promise<Measurement>{
+export async function measure(root:string,fn:()=>Promise<unknown>):Promise<Measurement>{
  global.gc?.();const before=process.memoryUsage();let peak=before.rss,readAttempts=0,readFiles=0,readBytes=0,directoryReads=0;
  const originalRead=fs.readFile,originalDir=fs.readdir;
  const inside=(v:unknown)=>{const rel=path.relative(root,path.resolve(String(v)));return !rel.startsWith("..")&&!path.isAbsolute(rel);};
  fs.readFile=(async(...args:Parameters<typeof fs.readFile>)=>{const tracked=inside(args[0]);if(tracked)readAttempts++;const result=await Reflect.apply(originalRead,fs,args);if(tracked){readFiles++;readBytes+=Buffer.byteLength(result);}return result;}) as typeof fs.readFile;
  fs.readdir=(async(...args:Parameters<typeof fs.readdir>)=>{if(inside(args[0]))directoryReads++;return Reflect.apply(originalDir,fs,args);}) as typeof fs.readdir;
  const timer=setInterval(()=>{peak=Math.max(peak,process.memoryUsage().rss);},10),start=performance.now();
- try{const result=await fn(),end=process.memoryUsage();peak=Math.max(peak,end.rss);return {ms:performance.now()-start,readAttempts,readFiles,readBytes,directoryReads,rssDelta:end.rss-before.rss,heapDelta:end.heapUsed-before.heapUsed,peakRssDelta:peak-before.rss,responseBytes:Buffer.byteLength(JSON.stringify(result))};}
+ try{const result=await fn(),end=process.memoryUsage(),ms=performance.now()-start;peak=Math.max(peak,end.rss);const json=JSON.stringify(result);return {ms,readAttempts,readFiles,readBytes,directoryReads,rssDelta:end.rss-before.rss,heapDelta:end.heapUsed-before.heapUsed,peakRssDelta:peak-before.rss,responseBytes:Buffer.byteLength(json),responseHash:createHash("sha256").update(json).digest("hex")};}
  finally{clearInterval(timer);fs.readFile=originalRead;fs.readdir=originalDir;}
 }
 export async function benchmarkScoutAccuracy(sizes:number[],repeats=3){
