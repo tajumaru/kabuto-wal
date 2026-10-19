@@ -1,4 +1,4 @@
-import { it,expect } from "vitest";
+import { it,expect,vi } from "vitest";
 import { scoutScaleFixture } from "../fixtures/scout-accuracy-scale";
 import { cachedScoutAccuracy } from "../apps/api/src/scout-accuracy-cache";
 import { scoutAccuracy } from "../apps/api/src/bottom-scout-accuracy";
@@ -8,6 +8,27 @@ import { benchmarkScoutConcurrency } from "../scripts/benchmark-scout-concurrenc
 
 it("負荷試験は明示的に呼び出す関数で、import時には実行しない",()=>{
  expect(typeof benchmarkScoutConcurrency).toBe("function");
+});
+it("長時間の初回計算後もページ切り替えで全集計をやり直さない",async()=>{
+ const f=await scoutScaleFixture(2);let wall=0;
+ const clock=vi.spyOn(Date,"now").mockImplementation(()=>wall),original=f.s.history.bind(f.s);
+ const history=vi.spyOn(f.s,"history").mockImplementation(async code=>{wall=120_000;return original(code);});
+ try{
+  const first=await scoutAccuracy(f.s,{pageSize:1},f.now,{persist:false});history.mockClear();
+  const next=await scoutAccuracy(f.s,{page:2,pageSize:1},new Date(f.now.getTime()+120_001),{persist:false});
+  expect(next.groups).toEqual(first.groups);expect(history).not.toHaveBeenCalled();
+ }finally{history.mockRestore();clock.mockRestore();await f.cleanup();}
+});
+it("計算完了からのTTLでも、計算中に到来した未来データの境界を延長しない",async()=>{
+ const f=await scoutScaleFixture(2);let wall=0,calls=0;
+ await f.json("boundary.json",{availableAt:new Date(f.now.getTime()+30_000).toISOString()});
+ const clock=vi.spyOn(Date,"now").mockImplementation(()=>wall);
+ try{
+  const call=(offset:number)=>cachedScoutAccuracy(f.s,"elapsed-boundary",new Date(f.now.getTime()+offset),async s=>{
+   calls++;const value=await s.store.read("boundary.json");wall+=120_000;return value;
+  });
+  await call(0);await call(120_001);expect(calls).toBe(2);
+ }finally{clock.mockRestore();await f.cleanup();}
 });
 
 it("同一キーの進行中集計だけ共有し、返却値を分離する",async()=>{

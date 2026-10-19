@@ -25,7 +25,7 @@ async function unchanged(s:Service,entry:Pick<Entry<unknown>,"lists"|"reads">){
 export async function cachedScoutAccuracy<T,R=T>(s:Service,key:string,now:Date,compute:(view:Service)=>Promise<T>,select:(value:T)=>R=(v=>v as unknown as R),writeLock=false):Promise<R>{
  let entries=caches.get(s);if(!entries){entries=new Map();caches.set(s,entries);}
  let flights=pending.get(s);if(!flights){flights=new Map();pending.set(s,flights);}
- const at=now.getTime();let flight=flights.get(key) as Promise<Entry<T>>|undefined;
+ const at=now.getTime(),started=Date.now();let flight=flights.get(key) as Promise<Entry<T>>|undefined;
  if(!flight){
  const resolve=async():Promise<Entry<T>>=>{
  const old=entries.get(key) as Entry<T>|undefined;
@@ -33,7 +33,7 @@ export async function cachedScoutAccuracy<T,R=T>(s:Service,key:string,now:Date,c
  entries.delete(key);
  for(let attempt=0;attempt<3;attempt++){
  const reads:Entry<T>["reads"]=new Map(),lists:Entry<T>["lists"]=new Map(),memo=new Map<string,Promise<unknown>>(),listing=new Map<string,Promise<string[]>>(),writes=new Map<string,unknown>();
- let until=at+60_000;
+ let until=Infinity;
  // Expire before a stored future observation, forecast, or close deadline becomes usable.
  const observe=(value:unknown):void=>{
   if(typeof value==="string"&&/^\d{4}-\d{2}-\d{2}(?:T|$)/.test(value)){
@@ -78,6 +78,9 @@ export async function cachedScoutAccuracy<T,R=T>(s:Service,key:string,now:Date,c
   for(const [prefix,files] of lists)if(file.startsWith(`${prefix}/`)&&!files.includes(file)){files.push(file);files.sort();}
  }
  if(writes.size&&!await unchanged(s,entry))continue;
+ // Long scans must not consume the whole TTL before the response is ready.
+ // Keep the evaluation cutoff and every observed future boundary unchanged.
+ entry.until=Math.min(until,at+Math.max(0,Date.now()-started)+60_000);
  if(entries.size>=4)entries.delete(entries.keys().next().value!);
  entries.set(key,entry);return entry;
  }
