@@ -14,7 +14,7 @@ export const accuracyQuerySchema=z.object({page:z.coerce.number().int().min(1).d
 export async function scoutAccuracy(s:Service,raw:unknown={},now=new Date(),options:{persist?:boolean}={}){
   const query=accuracyQuerySchema.parse(raw);
   const key=hash({query,persist:options.persist!==false,mode:s.mode,index:process.env.SCOUT_MARKET_REGIME_INDEX_CODE??null});
-  return cachedScoutAccuracy(s,key,now,view=>computeScoutAccuracy(view,query,now,options));
+  return cachedScoutAccuracy(s,key,now,view=>computeScoutAccuracy(view,query,now,options),v=>v,options.persist!==false);
 }
 async function computeScoutAccuracy(s:Service,raw:unknown,now:Date,options:{persist?:boolean}){
   const q=accuracyQuerySchema.parse(raw),mode=s.mode==="demo"?"demo":"research",files=(await s.store.files(forecastBase(mode,q.recordingMode))).filter(f=>/\/\d{17}\/[a-f0-9]{64}\/original.json$/.test(f)).sort().reverse();
