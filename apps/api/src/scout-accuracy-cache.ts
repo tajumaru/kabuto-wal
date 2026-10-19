@@ -2,17 +2,19 @@ import type { Service } from "./service";
 import { hash } from "../../../packages/integrations/adjusted-series";
 import { scoutAccuracyBatch } from "./scout-accuracy-io";
 
-type Read={file:string;fallback:unknown;digest:string};
+type Read={file:string;digest:string|null};
 type Entry<T>={at:number;until:number;value:T;reads:Map<string,Read>;lists:Map<string,string[]>};
 const caches=new WeakMap<Service,Map<string,Entry<unknown>>>();
 const pending=new WeakMap<Service,Map<string,Promise<Entry<unknown>>>>();
-const readKey=(file:string,fallback:unknown)=>hash([file,typeof fallback,fallback]);
 async function unchanged(s:Service,entry:Pick<Entry<unknown>,"lists"|"reads">){
  const inventories=async()=> (await scoutAccuracyBatch([...entry.lists],async([prefix,files])=>hash((await s.store.files(prefix)).sort())===hash(files))).every(Boolean);
  try{
   for(let pass=0;pass<2;pass++){
    if(!await inventories())return false;
-   if(!(await scoutAccuracyBatch([...entry.reads.values()],async({file,fallback,digest})=>hash(await s.store.read(file,fallback))===digest)).every(Boolean))return false;
+   if(!(await scoutAccuracyBatch([...entry.reads.values()],async({file,digest})=>{
+    try{return hash(await s.store.read(file))===digest;}
+    catch(error){return digest===null&&(error as NodeJS.ErrnoException).code==="ENOENT";}
+   })).every(Boolean))return false;
   }
   return await inventories();
  }catch{return false;}
@@ -42,9 +44,14 @@ export async function cachedScoutAccuracy<T,R=T>(s:Service,key:string,now:Date,c
  const store=new Proxy(s.store,{get(target,property,receiver){
   if(property==="read")return async(file:string,fallback?:unknown)=>{
    if(writes.has(file))return structuredClone(writes.get(file));
-   const id=readKey(file,fallback);let value=memo.get(id);
-   if(!value){value=target.read<unknown>(file,fallback);memo.set(id,value);}
-   const result=await value;reads.set(id,{file,fallback:structuredClone(fallback),digest:hash(result)});observe(result);return structuredClone(result);
+   // Memoize the physical read, never its fallback. ENOENT is source evidence;
+   // each caller still receives its own null/array/object fallback semantics.
+   let value=memo.get(file);
+   if(!value){value=target.read<unknown>(file);memo.set(file,value);}
+   let result:unknown;
+   try{result=await value;reads.set(file,{file,digest:hash(result)});}
+   catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT"||fallback===undefined)throw error;reads.set(file,{file,digest:null});result=fallback;}
+   observe(result);return structuredClone(result);
   };
   if(property==="files")return async(prefix:string)=>{
    let promise=listing.get(prefix);if(!promise){promise=target.files(prefix).then(files=>{files.sort();lists.set(prefix,files);return files;});listing.set(prefix,promise);}
@@ -67,8 +74,7 @@ export async function cachedScoutAccuracy<T,R=T>(s:Service,key:string,now:Date,c
   const existing=await s.store.read(file,null);
   if(existing!==null){if(hash(existing)!==hash(data))throw Error("評価原本の保存内容が競合しています");}
   else await s.store.write(file,data,true);
-  for(const [id,read] of reads)if(read.file===file){memo.set(id,Promise.resolve(data));read.digest=hash(data);}
-  reads.set(readKey(file,undefined),{file,fallback:undefined,digest:hash(data)});
+  memo.set(file,Promise.resolve(data));reads.set(file,{file,digest:hash(data)});
   for(const [prefix,files] of lists)if(file.startsWith(`${prefix}/`)&&!files.includes(file)){files.push(file);files.sort();}
  }
  if(writes.size&&!await unchanged(s,entry))continue;
