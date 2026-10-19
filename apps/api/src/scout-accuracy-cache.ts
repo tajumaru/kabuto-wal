@@ -58,7 +58,7 @@ export async function cachedScoutAccuracy<T,R=T>(s:Service,key:string,now:Date,c
    return [...await promise];
   };
   if(property==="write")return async(file:string,value:unknown,immutable=false)=>{
-   if(!writeLock||!immutable)throw Error("精度集計ではロック下の不変評価原本だけを保存できます");
+   if(!writeLock||!immutable)throw Error("精度集計では不変評価原本だけを仮生成できます");
    if(writes.has(file)&&hash(writes.get(file))!==hash(value))throw Error("評価原本の保存内容が競合しています");
    writes.set(file,structuredClone(value));observe(value);
   };
@@ -68,8 +68,10 @@ export async function cachedScoutAccuracy<T,R=T>(s:Service,key:string,now:Date,c
  const value=await compute(view);
  const entry={at,until,value,reads,lists};
  if(!await unchanged(s,entry))continue;
- // Publish staged immutable evaluations only after their source snapshot passed.
- // The caller's existing Store lock is held through validation and publication.
+ // Phase B rechecks the entire observed snapshot after acquiring the root lock.
+ // A conflict returns to Phase A; expensive computation is never retried here.
+ const publish=async()=>{
+ if(!await unchanged(s,entry))return false;
  for(const [file,data] of writes){
   const existing=await s.store.read(file,null);
   if(existing!==null){if(hash(existing)!==hash(data))throw Error("評価原本の保存内容が競合しています");}
@@ -77,7 +79,9 @@ export async function cachedScoutAccuracy<T,R=T>(s:Service,key:string,now:Date,c
   memo.set(file,Promise.resolve(data));reads.set(file,{file,digest:hash(data)});
   for(const [prefix,files] of lists)if(file.startsWith(`${prefix}/`)&&!files.includes(file)){files.push(file);files.sort();}
  }
- if(writes.size&&!await unchanged(s,entry))continue;
+ return unchanged(s,entry);
+ };
+ if(writes.size&&!await s.store.lock(publish))continue;
  // Long scans must not consume the whole TTL before the response is ready.
  // Keep the evaluation cutoff and every observed future boundary unchanged.
  entry.until=Math.min(until,at+Math.max(0,Date.now()-started)+60_000);
@@ -86,8 +90,9 @@ export async function cachedScoutAccuracy<T,R=T>(s:Service,key:string,now:Date,c
  }
  throw Error("集計中に保存データが変更されました。更新完了後に再試行してください。");
  };
- // Existing cross-process writer lock protects immutable evaluation creation.
- flight=writeLock?s.store.lock(resolve):resolve();flights.set(key,flight);
+ // Phase A and cache validation never acquire the writer lock. Only staged
+ // immutable publications use the existing cross-process exclusion above.
+ flight=resolve();flights.set(key,flight);
  void flight.finally(()=>{if(flights.get(key)===flight)flights.delete(key);}).catch(()=>{});
  }
  const entry=await flight;
