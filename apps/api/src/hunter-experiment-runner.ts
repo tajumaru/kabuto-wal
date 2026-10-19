@@ -174,7 +174,8 @@ export async function controlLabRun(
   id: string,
   action: "pause" | "cancel" | "resume",
 ) {
-  await readLabRun(s, id);
+  const run=await readLabRun(s, id);
+  if(action==="resume")await verifyLabPlanInputs(s,run.planId);
   return controlResearchJob(s, labRunKey(id), action);
 }
 export async function completedLabParts(s: Service, id: string) {

@@ -5,6 +5,8 @@ import {
   labMethodInputSchema,
   labStateSchema,
   labPlanSchema,
+  labPlanHistorySchema,
+  LEGACY_LAB_PLAN_MESSAGE,
   LAB_METHOD,
   type LabMethod,
 } from "../../../packages/core/hunter-experiment-schema";
@@ -12,7 +14,7 @@ import { cohortIdSchema } from "../../../packages/core/hunter-cohort-schema";
 import { z } from "zod";
 export const labBase = "research/lab";
 export async function readLabPlan(s: Service, id: string) {
-  const p = labPlanSchema.parse(
+  const p = labPlanHistorySchema.parse(
       await s.store.read(
         `${labBase}/plans/${cohortIdSchema.parse(id)}/original.json`,
       ),
@@ -25,6 +27,11 @@ export async function readLabPlan(s: Service, id: string) {
   )
     throw Error("検証計画hash・区分不一致");
   return p;
+}
+export async function readExecutableLabPlan(s: Service, id: string) {
+  const p=await readLabPlan(s,id);
+  if(p.evaluationHashes===undefined)throw Error(LEGACY_LAB_PLAN_MESSAGE);
+  return labPlanSchema.parse(p);
 }
 export const methodKey = (id: string) =>
   `${labBase}/methods/${cohortIdSchema.parse(id)}/original.json`;

@@ -21,7 +21,7 @@ import {
 } from "./hunter-experiment-runner";
 import {
   labBase,
-  readLabPlan,
+  readExecutableLabPlan as readLabPlan,
   readLabMethod,
   labEvents,
   changeLabState,

@@ -76,7 +76,8 @@ export const labPlanInputSchema = z
       });
   });
 export type LabPlanInput = z.infer<typeof labPlanInputSchema>;
-export const labPlanSchema = labPlanInputSchema
+// Storage/history accepts the original legacy bytes without upgrading them.
+export const labPlanHistorySchema = labPlanInputSchema
   .safeExtend({
     planId: cohortIdSchema,
     createdAt: z.string().datetime(),
@@ -94,6 +95,16 @@ export const labPlanSchema = labPlanInputSchema
     methodVersion: z.literal("temporal-lab-v1"),
   })
   .strict();
+export const labPlanSchema = labPlanHistorySchema.safeExtend({
+  evaluationHashes: z.record(cohortIdSchema, cohortIdSchema),
+}).superRefine((p,ctx)=>{
+  const ids=new Set(p.evaluationIds),keys=Object.keys(p.evaluationHashes);
+  if(ids.size!==p.evaluationIds.length||keys.length!==ids.size||keys.some(id=>!ids.has(id)))
+    ctx.addIssue({code:"custom",message:"固定評価IDとhashの対応が一致しません"});
+});
+export type LabPlanHistory = z.infer<typeof labPlanHistorySchema>;
+export const LEGACY_LAB_PLAN_MESSAGE = "旧形式・再実行不可。evaluationHashesを固定した新形式の研究計画を作り直してください。";
+export const isLegacyLabPlan = (p: LabPlanHistory) => p.evaluationHashes === undefined;
 export type LabPlan = z.infer<typeof labPlanSchema>;
 export const labRunInputSchema = z
   .object({

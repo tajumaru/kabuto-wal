@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Service } from "./service";
-import { readLabPlan, labBase } from "./hunter-experiment";
+import { readExecutableLabPlan as readLabPlan, labBase } from "./hunter-experiment";
 import { readNotebook } from "./kabumaru-notebook";
 import { cohortIdSchema } from "../../../packages/core/hunter-cohort-schema";
 import { labMethodInputSchema } from "../../../packages/core/hunter-experiment-schema";

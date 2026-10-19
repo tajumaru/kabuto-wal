@@ -4,6 +4,7 @@ import type { Calendar } from "../../../packages/core/index";
 import {
   labPlanInputSchema,
   labPlanSchema,
+  labPlanHistorySchema,
   type LabPlan,
 } from "../../../packages/core/hunter-experiment-schema";
 import {
@@ -13,7 +14,7 @@ import {
 import { readCohort } from "./hunter-cohort";
 import { cohortEvaluations } from "./hunter-cohort-evaluation";
 import { hash } from "../../../packages/integrations/adjusted-series";
-import { labBase, readLabPlan, readLabMethod } from "./hunter-experiment";
+import { labBase, readExecutableLabPlan, readLabMethod } from "./hunter-experiment";
 export function temporalPartition(
   c: CohortManifest,
   p: z.infer<typeof labPlanInputSchema>,
@@ -178,7 +179,7 @@ export async function createLabPlan(
   });
 }
 export async function verifyLabPlanInputs(s: Service, id: string) {
-  const p = await readLabPlan(s, id);
+  const p = await readExecutableLabPlan(s, id);
   const calendar = await s.store.read<Calendar>("market/calendar.json", []);
   if (hash(calendar) !== p.calendarHash)
     throw Error("固定営業日カレンダーの変更を検出しました");
@@ -253,6 +254,8 @@ export async function openLabTest(
   p: LabPlan,
   experimentId: string,
 ) {
+  const fixed = await verifyLabPlanInputs(s, p.planId);
+  if(hash(fixed)!==hash(p))throw Error("Test開封時の固定入力が一致しません");
   const selection = await s.store.read<{ experimentId: string }>(
     `${labBase}/plans/${p.planId}/selection/original.json`,
     null,
@@ -316,7 +319,7 @@ export async function observeLabPeriod(
   for (const f of (await s.store.files(`${labBase}/plans`)).filter((f) =>
     /^research\/lab\/plans\/[a-f0-9]{64}\/original.json$/.test(f),
   )) {
-    const other = labPlanSchema.parse(await s.store.read(f));
+    const other = labPlanHistorySchema.parse(await s.store.read(f));
     if (other.planId === p.planId || other.mode !== p.mode) continue;
     if (
       other.test.from <= p[stage].to &&
