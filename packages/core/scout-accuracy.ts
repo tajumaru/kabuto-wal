@@ -2,6 +2,13 @@ import { z } from "zod";
 import { quantile } from "./index";
 import { scoutId,scoutReviewSchema,scoutRowSchema,scoutSimilarSchema } from "./bottom-scout-schema";
 const nullable=z.number().finite().nullable();
+/** Wilson score interval, nominal 95% under independent Bernoulli sampling. */
+export function wilsonInterval(hits:number,n:number){
+  if(!Number.isInteger(hits)||!Number.isInteger(n)||hits<0||n<0||hits>n)throw Error("不正な的中件数");
+  if(!n)return null;
+  const z=1.959963984540054,p=hits/n,d=1+z*z/n,center=(p+z*z/(2*n))/d,half=z*Math.sqrt(p*(1-p)/n+z*z/(4*n*n))/d;
+  return {lower:Math.max(0,center-half),upper:Math.min(1,center+half)};
+}
 export const accuracyResultSchema=scoutReviewSchema.shape.rows.element.extend({
   horizon:z.union([z.literal(5),z.literal(10),z.literal(20)]),target:z.string().nullable(),
   up:z.boolean().nullable(),maxRise:nullable,maxDrawdown:nullable,relapse:z.boolean().nullable(),basePrice:nullable,targetPrice:nullable,dataAvailableAt:z.string().nullable(),
@@ -13,6 +20,8 @@ export const accuracyResultSchema=scoutReviewSchema.shape.rows.element.extend({
 export const accuracyPredictionSchema=z.object({
   forecastId:scoutId,reportId:scoutId,predictedAt:z.string().datetime(),algorithmVersion:z.literal("bottom-scout-v1"),inputHash:scoutId,
   rank:z.number().int(),referencePrice:nullable,included:z.boolean(),exclusionReason:z.string().nullable(),
+  regime:z.enum(["up","down","flat","unknown"]).default("unknown"),
+  regimeEvidence:z.object({methodVersion:z.literal("market-regime-v1"),benchmarkCode:z.string().nullable(),cutoff:z.string(),inputHash:scoutId.nullable(),revisionIds:z.array(z.string()),reason:z.string()}).optional(),
   evidence:scoutRowSchema.omit({chart:true,similar:true}).extend({similar:scoutSimilarSchema.pick({sampleCount:true,bestSimilarity:true,horizons:true,lowSample:true}).nullable()}),
   results:z.array(accuracyResultSchema).length(3).refine(rows=>new Set(rows.map(r=>r.horizon)).size===3,"5・10・20営業日後の評価が必要です"),
   reflection:z.object({selection:z.string(),outcomes:z.array(z.object({horizon:z.number(),text:z.string(),evidenceIds:z.array(z.string()),similarSuccesses:z.array(z.object({forecastId:scoutId,reportId:scoutId,code:z.string(),matchedConditions:z.array(z.string())}))})),cautions:z.array(z.string())}).optional(),
@@ -20,14 +29,18 @@ export const accuracyPredictionSchema=z.object({
 export type AccuracyPrediction=z.infer<typeof accuracyPredictionSchema>;
 export const accuracyMetricSchema=z.object({
   horizon:z.number(),total:z.number(),evaluated:z.number(),pending:z.number(),unavailable:z.number(),hits:z.number(),misses:z.number(),hitRate:nullable,
+  confidence95:z.object({lower:z.number(),upper:z.number()}).nullable(),
   meanReturn:nullable,medianReturn:nullable,worstDrawdown:nullable,relapseRate:nullable,lowSample:z.boolean(),
   benchmarkCode:z.string().nullable(),benchmarkPairs:z.number(),pairedPredictionMean:nullable,benchmarkMean:nullable,meanExcessReturn:nullable,outperformanceRate:nullable,comparisonNote:z.string(),
 });
 export const accuracyConditionSchema=z.object({horizon:z.number(),code:z.string(),label:z.string(),evaluated:z.number(),hits:z.number(),failures:z.number()});
 export const scoutAccuracySchema=z.object({
-  methodVersion:z.literal("scout-accuracy-v1"),mode:z.enum(["demo","research"]),recordingMode:z.enum(["live","research"]),evaluatedAt:z.string().datetime(),
+  methodVersion:z.literal("scout-accuracy-v2"),mode:z.enum(["demo","research"]),recordingMode:z.enum(["live","research"]),evaluatedAt:z.string().datetime(),
   page:z.number(),pageSize:z.number(),totalReports:z.number(),selectedReports:z.number(),excludedReports:z.number(),
   predictions:z.array(accuracyPredictionSchema),groups:z.array(accuracyMetricSchema),
+  cumulative:z.object({predictions:z.number(),included:z.number(),duplicates:z.number()}),
+  regimes:z.array(accuracyMetricSchema.extend({regime:z.enum(["up","down","flat","unknown"])})),
+  explanation:z.string(),
   top:z.array(accuracyMetricSchema.extend({top:z.number()})),bands:z.array(accuracyMetricSchema.extend({band:z.string()})),conditions:z.array(accuracyConditionSchema),notes:z.array(z.string()),
 });
 export type ScoutAccuracy=z.infer<typeof scoutAccuracySchema>;
@@ -36,13 +49,13 @@ export function accuracyMetrics(cases:AccuracyPrediction[],horizon:number){
   const results=cases.filter(c=>c.included).flatMap(c=>c.results.filter(r=>r.horizon===horizon)),evaluated=results.filter(r=>r.status==="evaluated"&&r.actualReturn!==null),values=evaluated.map(r=>r.actualReturn!);
   const pairs=evaluated.filter(r=>r.benchmarkReturn!==null&&r.benchmarkCode),codes=new Set(pairs.map(r=>r.benchmarkCode)),comparable=codes.size===1;
   const chosen=comparable?pairs:[],excess=chosen.map(r=>r.actualReturn!-r.benchmarkReturn!);
-  return accuracyMetricSchema.parse({horizon,total:results.length,evaluated:evaluated.length,pending:results.filter(r=>r.status==="pending").length,unavailable:results.filter(r=>r.status==="unavailable").length,hits:values.filter(v=>v>0).length,misses:values.filter(v=>v<=0).length,hitRate:values.length?values.filter(v=>v>0).length/values.length:null,meanReturn:mean(values),medianReturn:values.length?quantile(values,.5):null,worstDrawdown:evaluated.length?Math.min(...evaluated.map(r=>r.maxDrawdown??0)):null,relapseRate:evaluated.length?evaluated.filter(r=>r.relapse).length/evaluated.length:null,lowSample:values.length<20,benchmarkCode:comparable?chosen[0]?.benchmarkCode??null:null,benchmarkPairs:chosen.length,pairedPredictionMean:mean(chosen.map(r=>r.actualReturn!)),benchmarkMean:mean(chosen.map(r=>r.benchmarkReturn!)),meanExcessReturn:mean(excess),outperformanceRate:excess.length?excess.filter(v=>v>0).length/excess.length:null,comparisonNote:comparable?"同一の評価可能ペアだけを比較。設定銘柄でありTOPIXとは限りません。":codes.size>1?"比較銘柄が混在しているため集計比較不能です。":"保存済み比較データがないため比較不能です。"});
+  return accuracyMetricSchema.parse({confidence95:wilsonInterval(values.filter(v=>v>0).length,values.length),horizon,total:results.length,evaluated:evaluated.length,pending:results.filter(r=>r.status==="pending").length,unavailable:results.filter(r=>r.status==="unavailable").length,hits:values.filter(v=>v>0).length,misses:values.filter(v=>v<=0).length,hitRate:values.length?values.filter(v=>v>0).length/values.length:null,meanReturn:mean(values),medianReturn:values.length?quantile(values,.5):null,worstDrawdown:evaluated.length?Math.min(...evaluated.map(r=>r.maxDrawdown??0)):null,relapseRate:evaluated.length?evaluated.filter(r=>r.relapse).length/evaluated.length:null,lowSample:values.length<20,benchmarkCode:comparable?chosen[0]?.benchmarkCode??null:null,benchmarkPairs:chosen.length,pairedPredictionMean:mean(chosen.map(r=>r.actualReturn!)),benchmarkMean:mean(chosen.map(r=>r.benchmarkReturn!)),meanExcessReturn:mean(excess),outperformanceRate:excess.length?excess.filter(v=>v>0).length/excess.length:null,comparisonNote:comparable?"同一の評価可能ペアだけを比較。設定銘柄でありTOPIXとは限りません。":codes.size>1?"比較銘柄が混在しているため集計比較不能です。":"保存済み比較データがないため比較不能です。"});
 }
 export function summarizeAccuracy(predictions:AccuracyPrediction[]){
   const seen=new Set<string>();
   for(const c of [...predictions].sort((a,b)=>a.predictedAt.localeCompare(b.predictedAt)||a.forecastId.localeCompare(b.forecastId))){
     const key=`${c.algorithmVersion}/${c.evidence.code}/${c.evidence.asOf}`;
-    c.included=!seen.has(key);c.exclusionReason=c.included?null:"同一銘柄・基準日の重複（このページで最初の予測だけを集計）";seen.add(key);
+    c.included=!seen.has(key);c.exclusionReason=c.included?null:"同一銘柄・基準日の重複（全履歴で最初の予測だけを集計）";seen.add(key);
   }
   const band=(score:number)=>score<40?"0–39":score<60?"40–59":score<80?"60–79":"80–100";
   const groups=[5,10,20].map(h=>accuracyMetrics(predictions,h));

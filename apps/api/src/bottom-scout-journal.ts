@@ -75,7 +75,7 @@ export async function evaluateScout(
   s: Service,
   report: ScoutReport,
   now = new Date(),
-  options: {calendar?:Calendar;calendarIssue?:string;requiredTargets?:Record<string,string|null>;benchmarkCode?:string|null;forecastId?:string;evaluationCodes?:string[];loadSeries?:(code:string)=>Promise<Bar[]>} = {},
+  options: {persist?:boolean;calendar?:Calendar;calendarIssue?:string;requiredTargets?:Record<string,string|null>;benchmarkCode?:string|null;forecastId?:string;evaluationCodes?:string[];loadSeries?:(code:string)=>Promise<Bar[]>} = {},
 ) {
   if(!options.forecastId&&await s.store.read(forecastKey(report),null)){
     const {forecast:p,report:original}=await readScoutForecast(s,forecastKey(report));
@@ -187,6 +187,7 @@ export async function evaluateScout(
   const evaluationKey = `${SCOUT_BASE}/evaluations/${report.reportId}/${review.evaluationId}/original.json`;
   const existing=await s.store.read(evaluationKey,null);
   if(existing){const parsed=scoutReviewSchema.parse(existing);if(parsed.evaluationId!==review.evaluationId||identity(parsed)!==review.evaluationId)throw Error("評価原本hashが一致しません");return parsed;}
+  if(options.persist===false)return review;
   try {
     await s.store.write(evaluationKey, review, true);
   } catch (error) {
