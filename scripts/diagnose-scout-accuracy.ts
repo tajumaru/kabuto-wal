@@ -33,7 +33,14 @@ export async function diagnoseScoutAccuracy(root:string,mode:"demo"|"live",now=n
  try{
   for(const recordingMode of ["live","research"] as const){
    const result=await scoutAccuracy(s,{recordingMode,pageSize:1},now,{persist:false});
-   counts.push({recordingMode,reports:result.totalReports,...result.cumulative,groups:result.groups,regimes:result.regimes});
+   counts.push({recordingMode,reports:result.totalReports,...result.cumulative,
+    availability:result.cumulative.predictions===0?"no-predictions":"predictions-present",
+    message:result.cumulative.predictions===0?"検証対象なし（精度0%ではありません）":"保存済み予測から再計算。評価待ち・不能は的中率の分母から除外。",
+    groups:result.groups,top:result.top,bands:result.bands,regimes:result.regimes,
+    warnings:[...result.notes,
+     "予測対象は保存済みスカウト候補だけであり、非候補や市場全体を代表する無作為標本ではありません。選択バイアスがあります。",
+     "予測根拠は予測当時の入力revisionに固定。実績は評価cutoffまでに取得済みのrevisionで測定し、予測原本は現在の価格から作り直しません。",
+     "表示値は取引費用・配当・約定を含む実際の取引利益ではありません。"]});
   }
   return {status:"confirmed",mode,readOnly:true,persistedEvaluations:0,counts,note:"保存済みデータによる再計算診断。評価原本の新規保存・実API接続は未実施です。"};
  }catch{

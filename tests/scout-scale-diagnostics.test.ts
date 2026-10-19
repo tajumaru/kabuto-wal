@@ -21,6 +21,11 @@ it("保存評価を持つ人工履歴で追加・原本改変・欠損を検出�
   await unlink(s.store.path(fixture.lastForecast));expect((await call()).totalReports).toBe(4);
   const before=await s.store.files("research"),diagnostic=await diagnoseScoutAccuracy(fixture.root,"demo",now);
   expect(diagnostic).toMatchObject({status:"confirmed",readOnly:true,persistedEvaluations:0});
+  const live=diagnostic.counts?.find(c=>c.recordingMode==="live"),research=diagnostic.counts?.find(c=>c.recordingMode==="research");
+  expect(live?.top).toHaveLength(9);expect(live?.groups.every(g=>g.confidence95!==null)).toBe(true);
+  expect(research?.availability).toBe("no-predictions");expect(research?.message).toContain("検証対象なし");
+  expect(research?.groups.every(g=>g.hitRate===null&&g.confidence95===null)).toBe(true);
+  expect(live?.warnings.join(" ")).toContain("選択バイアス");expect(live?.warnings.join(" ")).toContain("入力revision");
   expect(await s.store.files("research")).toEqual(before);expect(network).not.toHaveBeenCalled();
  }finally{await fixture.cleanup();network.mockRestore();}
 });
