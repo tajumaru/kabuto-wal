@@ -10,12 +10,19 @@ it("scale runnerのp50/p95は実標本から算出する",()=>{
  expect(percentiles([10,30,20])).toEqual({p50:20,p95:30});
 });
 it("精度検証I/Oは16件以内で順序を保ち、失敗時にも開始済み処理を待つ",async()=>{
- let active=0,peak=0,finished=0;
+ let active=0,peak=0,finished=0,started=0;
  const values=Array.from({length:40},(_,i)=>i);
  const out=await scoutAccuracyBatch(values,async i=>{active++;peak=Math.max(peak,active);await new Promise(r=>setTimeout(r,(i%3)+1));active--;return i;});
  expect(out).toEqual(values);expect(peak).toBeLessThanOrEqual(16);
- await expect(scoutAccuracyBatch(values,async i=>{await new Promise(r=>setTimeout(r,1));finished++;if(i===2)throw Error("fixture");})).rejects.toThrow("fixture");
- expect(finished).toBe(16);expect(active).toBe(0);
+ await expect(scoutAccuracyBatch(values,async i=>{
+  started++;active++;peak=Math.max(peak,active);
+  try{await new Promise(r=>setTimeout(r,1));if(i===2)throw Error("fixture");}
+  finally{finished++;active--;}
+ })).rejects.toThrow("fixture");
+ // A streaming pool may start replacement work before an error is observed.
+ // Its safety contract is bounded concurrency and draining every started task.
+ expect(peak).toBeLessThanOrEqual(16);expect(finished).toBe(started);expect(active).toBe(0);
+ const completed=finished;await new Promise(r=>setTimeout(r,5));expect(finished).toBe(completed);
 });
 it("保存評価を持つ人工履歴で追加・原本改変・欠損を検出し、診断は保存しない",async()=>{
  const network=vi.spyOn(globalThis,"fetch").mockRejectedValue(Error("forbidden")),fixture=await scoutScaleFixture(4);
