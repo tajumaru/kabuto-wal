@@ -1,5 +1,6 @@
 import { earningsSummarySchema, earningsDateSchema, companyMaterialsSchema, type EarningsSummary, type CompanyMaterials } from "./earnings-schema";
 import type { EarningsEvidence, EarningsAttempt } from "../integrations/earnings-evidence";
+import { hash } from "../integrations/adjusted-series";
 export type EarningsInput = { evidence: EarningsEvidence[]; attempt: EarningsAttempt | null };
 export function financialNumber(value: unknown): number | null {
   if (typeof value !== "string" || !/^-?\d+(?:\.\d+)?$/.test(value)) return null;
@@ -28,12 +29,16 @@ export function analyzeEarnings(summary: EarningsInput, schedule: EarningsInput,
     source: "jquants-v2", revisions: input.evidence.map(e => e.revision), evidence: input.evidence.map(e=>({revision:e.revision,rawHash:e.rawHash,fetchedAt:e.fetchedAt}))});
   const comments: string[] = [];
   // Retain all revisions on disk; choose the last observed version of each disclosure at this cutoff.
-  const disclosures = new Map<string, { row: EarningsSummary; revision: string }>();
+  const disclosures = new Map<string, { row: EarningsSummary; revision: string; fetchedAt: string }>();
   for (const e of summary.evidence.filter(e => e.fetchedAt <= cutoff)) for (const raw of e.raw) {
     const r = earningsSummarySchema.parse(raw);
-    if (Date.parse(time(r)) <= Date.parse(cutoff)) disclosures.set(r.DiscNo, {row:r, revision:e.revision});
+    if (Date.parse(time(r)) <= Date.parse(cutoff)) {
+      const old = disclosures.get(r.DiscNo), priority = old ? Date.parse(e.fetchedAt)-Date.parse(old.fetchedAt) : 1;
+      if (old && priority === 0 && hash(old.row) !== hash(r)) throw Error("同順位の決算revisionが矛盾しています");
+      if (!old || priority > 0 || (priority === 0 && e.revision > old.revision)) disclosures.set(r.DiscNo, {row:r, revision:e.revision,fetchedAt:e.fetchedAt});
+    }
   }
-  const rows = [...disclosures.values()].sort((a,b) => Date.parse(time(a.row))-Date.parse(time(b.row)));
+  const rows = [...disclosures.values()].sort((a,b) => Date.parse(time(a.row))-Date.parse(time(b.row)) || a.row.DiscNo.length-b.row.DiscNo.length || a.row.DiscNo.localeCompare(b.row.DiscNo));
   const latest = rows.at(-1), actual = rows.filter(r => basis(r.row) !== null && r.row.CurPerSt && r.row.CurPerEn).at(-1);
   if (latest) comments.push(`最新開示は${latest.row.DiscDate} ${latest.row.DiscTime} JST、開示番号${latest.row.DiscNo}だよ。`);
   if (actual) {
@@ -60,11 +65,17 @@ export function analyzeEarnings(summary: EarningsInput, schedule: EarningsInput,
     else comments.push(`${label}の変更は、同一年度・会計基準・連結区分の比較根拠が足りず未確認です。${current ? `直近の記載値は${financialNumber(current.r[forecastField(current.prefix,field)])}（${current.start}〜${current.end}、開示日${current.r.DiscDate}）です。` : "予想値の記載も確認できません。"}`);
   }
   const schedules = new Map<string, {row: ReturnType<typeof earningsDateSchema.parse>; revision: string}>();
-  for (const e of schedule.evidence.filter(e => e.fetchedAt <= cutoff)) for (const raw of e.raw) {
+  // code queries return complete endpoint snapshots. An empty latest snapshot must
+  // not resurrect a date absent from the provider's current accessible history.
+  const snapshots = schedule.evidence.filter(e => e.fetchedAt <= cutoff).sort((a,b)=>Date.parse(b.fetchedAt)-Date.parse(a.fetchedAt) || b.revision.localeCompare(a.revision));
+  const newest = snapshots[0];
+  if (newest && snapshots.some(e=>Date.parse(e.fetchedAt)===Date.parse(newest.fetchedAt) && hash(e.raw)!==hash(newest.raw))) throw Error("同順位の予定日snapshotが矛盾しています");
+  for (const e of newest ? [newest] : []) for (const raw of e.raw) {
     const r = earningsDateSchema.parse(raw);
     // PubDate has no time. fetchedAt proves receipt by cutoff; reject only future publication dates.
     if (Date.parse(`${r.PubDate}T00:00:00+09:00`) <= Date.parse(cutoff)) {
       const key = r.FQName, old = schedules.get(key);
+      if (old && r.PubDate === old.row.PubDate && hash(r) !== hash(old.row)) throw Error("同順位の予定日が矛盾しています");
       if (!old || r.PubDate >= old.row.PubDate) schedules.set(key,{row:r,revision:e.revision});
     }
   }

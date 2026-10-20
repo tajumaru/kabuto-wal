@@ -43,3 +43,16 @@ export const companyMaterialsSchema = z.object({
   nextEarningsDate: date.nullable(), comments: z.array(z.string()),
 });
 export type CompanyMaterials = z.infer<typeof companyMaterialsSchema>;
+
+// Acquisition diagnostics expose stages and safe categories, never provider bodies.
+export const earningsAcquisitionSchema = z.object({
+  status: z.enum(["disabled","success","failed"]), reason: z.string().optional(),
+  results: z.array(z.object({
+    endpoint: z.enum(["summary","earnings-date"]), status: z.enum(["success","failed"]), reason: z.string(),
+    errorCode: z.enum(["authentication","permission","rate-limit","network","invalid-response","storage"]).nullable(),
+    fetched: z.boolean(), saved: z.boolean(), hashVerified: z.boolean(),
+    rowCount: z.number().int().nonnegative().nullable(), fetchedAt: z.string().datetime().nullable(),
+    revision: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+  })).optional(),
+});
+export type EarningsAcquisition = z.infer<typeof earningsAcquisitionSchema>;
