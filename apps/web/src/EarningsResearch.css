@@ -1,0 +1,5 @@
+.earnings-research { min-width: 0; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+.earnings-research .card { margin-bottom: 16px; min-width: 0; overflow-wrap: anywhere; }
+.earnings-research button { min-height: 44px; }
+.earnings-research .company-materials { min-width: 0; }
+@media (max-width: 389px) { .earnings-research .card { padding: 14px; } }
