@@ -86,7 +86,7 @@ export function registerEarnings(app: FastifyInstance, s: Service) {
     const {code} = z.object({code:earningsCode}).parse(req.params);
     const {cutoff} = z.object({cutoff:z.string().datetime().optional()}).parse(req.query);
     const now = new Date().toISOString();
-    if (cutoff && cutoff > now) throw Error("未来の基準日時は指定できません");
+    if (cutoff && Date.parse(cutoff) > Date.parse(now)) throw Error("未来の基準日時は指定できません");
     return companyMaterials(s,code,cutoff ?? now);
   });
   // Uses createApp's existing owner session and same-origin mutation checks.

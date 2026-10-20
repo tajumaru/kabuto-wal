@@ -22,15 +22,16 @@ function comparable(a: EarningsSummary, b: EarningsSummary) {
     Math.abs((day(a.CurPerEn)-day(a.CurPerSt))-(day(b.CurPerEn)-day(b.CurPerSt))) <= 86400000 && !changed(a) && !changed(b);
 }
 export function analyzeEarnings(summary: EarningsInput, schedule: EarningsInput, cutoff: string): CompanyMaterials {
-  summary = {evidence:summary.evidence.filter(e=>e.fetchedAt <= cutoff),attempt:summary.attempt && summary.attempt.fetchedAt <= cutoff ? summary.attempt : null};
-  schedule = {evidence:schedule.evidence.filter(e=>e.fetchedAt <= cutoff),attempt:schedule.attempt && schedule.attempt.fetchedAt <= cutoff ? schedule.attempt : null};
+  const received = (at:string) => Date.parse(at) <= Date.parse(cutoff);
+  summary = {evidence:summary.evidence.filter(e=>received(e.fetchedAt)),attempt:summary.attempt && received(summary.attempt.fetchedAt) ? summary.attempt : null};
+  schedule = {evidence:schedule.evidence.filter(e=>received(e.fetchedAt)),attempt:schedule.attempt && received(schedule.attempt.fetchedAt) ? schedule.attempt : null};
   const check = (input: EarningsInput) => ({status: input.attempt?.status === "failed" ? "failed" : input.evidence.length ? "checked" : "not-fetched",
     reason: input.attempt?.reason ?? "この時点までに取得した原本がありません", checkedAt: input.attempt?.fetchedAt ?? null,
     source: "jquants-v2", revisions: input.evidence.map(e => e.revision), evidence: input.evidence.map(e=>({revision:e.revision,rawHash:e.rawHash,fetchedAt:e.fetchedAt}))});
   const comments: string[] = [];
   // Retain all revisions on disk; choose the last observed version of each disclosure at this cutoff.
   const disclosures = new Map<string, { row: EarningsSummary; revision: string; fetchedAt: string }>();
-  for (const e of summary.evidence.filter(e => e.fetchedAt <= cutoff)) for (const raw of e.raw) {
+  for (const e of summary.evidence) for (const raw of e.raw) {
     const r = earningsSummarySchema.parse(raw);
     if (Date.parse(time(r)) <= Date.parse(cutoff)) {
       const old = disclosures.get(r.DiscNo), priority = old ? Date.parse(e.fetchedAt)-Date.parse(old.fetchedAt) : 1;
@@ -67,7 +68,7 @@ export function analyzeEarnings(summary: EarningsInput, schedule: EarningsInput,
   const schedules = new Map<string, {row: ReturnType<typeof earningsDateSchema.parse>; revision: string}>();
   // code queries return complete endpoint snapshots. An empty latest snapshot must
   // not resurrect a date absent from the provider's current accessible history.
-  const snapshots = schedule.evidence.filter(e => e.fetchedAt <= cutoff).sort((a,b)=>Date.parse(b.fetchedAt)-Date.parse(a.fetchedAt) || b.revision.localeCompare(a.revision));
+  const snapshots = [...schedule.evidence].sort((a,b)=>Date.parse(b.fetchedAt)-Date.parse(a.fetchedAt) || b.revision.localeCompare(a.revision));
   const newest = snapshots[0];
   if (newest && snapshots.some(e=>Date.parse(e.fetchedAt)===Date.parse(newest.fetchedAt) && hash(e.raw)!==hash(newest.raw))) throw Error("同順位の予定日snapshotが矛盾しています");
   for (const e of newest ? [newest] : []) for (const raw of e.raw) {
@@ -87,6 +88,11 @@ export function analyzeEarnings(summary: EarningsInput, schedule: EarningsInput,
     if (days <= 7) comments.push("決算発表まで7日以内です。発表前後の急な値動きに注意してね。");
   } else comments.push([...schedules.values()].some(s => !s.row.SchDate) ? "発表予定日が未定へ変更された記録があります。旧予定日は使用しません。" : "この時点で有効な次回決算発表予定日は確認できません。");
   const earnings = check(summary), scheduleCheck = check(schedule);
+  const latestSummary=[...summary.evidence].sort((a,b)=>Date.parse(b.fetchedAt)-Date.parse(a.fetchedAt))[0];
+  if (earnings.status === "checked" && latestSummary?.raw.length === 0) {
+    earnings.status="no-data";earnings.reason="最新取得は対象データなしです。表示される過去の開示は以前の取得原本に基づきます";
+    comments.unshift("最新取得では決算データがありません。以下の開示・コメントは以前に取得した情報です。");
+  }
   if (earnings.status === "checked" && !rows.length) {earnings.status = "no-data";earnings.reason = "取得済みですが基準日時点で使える開示データがありません";}
   if (scheduleCheck.status === "checked" && !schedules.size) {scheduleCheck.status = "no-data";scheduleCheck.reason = "取得済みですが基準日時点で使える予定日公表データがありません";}
   return companyMaterialsSchema.parse({cutoff, earnings, schedule:scheduleCheck,

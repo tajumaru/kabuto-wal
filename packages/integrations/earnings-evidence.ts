@@ -56,13 +56,13 @@ export async function readEarningsAt(store: Store, code: string, endpoint: Earni
     const e = evidenceSchema.parse(await store.read(key)), { revision, ...body } = e;
     if (e.code !== code || e.endpoint !== endpoint || hash(body) !== revision || hash(e.raw) !== e.rawHash || !key.endsWith(`/${revision}/original.json`)) throw Error("決算原本の整合性エラー");
     validateEarningsRows(endpoint, code, e.raw);
-    if (e.fetchedAt <= cutoff) evidence.push(e);
+    if (Date.parse(e.fetchedAt) <= Date.parse(cutoff)) evidence.push(e);
   }
   const attempts: EarningsAttempt[] = [];
   for (const key of await store.files(`${base(code, endpoint)}/attempts`)) {
     const a = attemptSchema.parse(await store.read(key));
     if (a.code !== code || a.endpoint !== endpoint || !key.endsWith(`/${hash(a)}/original.json`)) throw Error("決算取得記録の整合性エラー");
-    if (a.fetchedAt <= cutoff) attempts.push(a);
+    if (Date.parse(a.fetchedAt) <= Date.parse(cutoff)) attempts.push(a);
   }
   for (const a of attempts) {
     if (a.status === "success" && !evidence.some(e=>e.revision===a.revision && e.fetchedAt===a.fetchedAt)) throw Error("決算取得記録の参照原本がありません");
