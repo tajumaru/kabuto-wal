@@ -1,5 +1,7 @@
 # かぶまる決算分析1.0 — 設計・運用
 
+> 最新の取得診断・revision選択・専用画面と検証結果は[決算分析1.1](kabumaru-earnings-1-1.md)を参照。以下は1.0実装時点の記録です。
+
 調査日：2026-10-20（JST）。調査開始時のローカルHEADとGitHub `main` は `246972329590767e49ca6631361d6757e8edab33`（`git ls-remote origin refs/heads/main`で確認）。開始時の未追跡 `tests/scout-accuracy-v4.test.ts` および実装中に現れた精度改善・ストレージ変更は今回の編集対象外。関連既存テストは3ファイル11件成功。
 
 ## 取得仕様
